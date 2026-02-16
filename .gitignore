@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads
+backend/uploads/
+
+# Node (frontend)
+node_modules/
+.next/
+out/
+
+# Docker volumes
+postgres_data/
+qdrant_data/
+
+# Alembic
+backend/alembic/versions/__pycache__/
+
+# Surya / model caches
+*.onnx
+*.bin
+models/
