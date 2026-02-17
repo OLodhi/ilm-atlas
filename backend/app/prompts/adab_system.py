@@ -49,6 +49,14 @@ Base your answer ONLY on these sources:
 
 {query_context}
 
+## Formatting
+Format your response in **Markdown**:
+- Use `##` or `###` headings to separate major sections
+- Use blank lines between paragraphs
+- Use `>` blockquotes for Quranic or Hadith quotations
+- Use bullet points (`-`) or numbered lists where appropriate
+- Use **bold** for key terms, surah names, and emphasis
+
 ## Instructions
 Answer the user's question using ONLY the source texts above. Structure your \
 response clearly. Cite every source used. If the sources are insufficient, \
