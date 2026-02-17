@@ -76,6 +76,72 @@ def _build_citation(hit: dict) -> Citation:
     )
 
 
+def _build_grouped_citations(hits: list[dict]) -> list[Citation]:
+    """Build citations, grouping consecutive same-ruku ayahs into one citation."""
+    citations: list[Citation] = []
+    i = 0
+    while i < len(hits):
+        hit = hits[i]
+        payload = hit["payload"]
+        ruku = payload.get("ruku")
+
+        # Group consecutive ayahs from the same ruku
+        if ruku is not None and payload.get("chunk_type") == "ayah":
+            group = [hit]
+            j = i + 1
+            while j < len(hits):
+                next_p = hits[j]["payload"]
+                if (next_p.get("ruku") == ruku
+                        and next_p.get("chunk_type") == "ayah"):
+                    group.append(hits[j])
+                    j += 1
+                else:
+                    break
+
+            if len(group) == 1:
+                citations.append(_build_citation(hit))
+            else:
+                citations.append(_build_passage_citation(group))
+            i = j
+        else:
+            citations.append(_build_citation(hit))
+            i += 1
+
+    return citations
+
+
+def _build_passage_citation(hits: list[dict]) -> Citation:
+    """Build a single Citation from a group of same-ruku ayahs."""
+    first = hits[0]["payload"]
+    last = hits[-1]["payload"]
+    surah = first.get("surah_name_english", "")
+    surah_num = first.get("surah_number", "")
+    first_ayah = first.get("ayah_number", "")
+    last_ayah = last.get("ayah_number", "")
+
+    source_label = f"Quran {surah_num}:{first_ayah}-{last_ayah} (Surah {surah})"
+
+    arabic_parts = []
+    english_parts = []
+    for hit in hits:
+        p = hit["payload"]
+        ayah_num = p.get("ayah_number", "")
+        arabic = p.get("content_arabic", "")
+        english = p.get("content_english", "")
+        if arabic:
+            arabic_parts.append(arabic)
+        if english:
+            english_parts.append(f"({surah_num}:{ayah_num}) {english}")
+
+    return Citation(
+        text_arabic="\n".join(arabic_parts) or None,
+        text_english="\n".join(english_parts) or None,
+        source=source_label,
+        chunk_type="ayah",
+        metadata=None,
+    )
+
+
 def _merge_keyword_priority(
     vector_hits: list[dict],
     keyword_hits: list[dict],
@@ -261,8 +327,10 @@ async def query(request: QueryRequest):
         vector_hits = sorted(all_hits.values(), key=lambda h: h["score"], reverse=True)
         vector_hits = vector_hits[:request.top_k]
 
-        # 5b. Expand ayah hits to full ruku passages
-        if any(h["payload"].get("ruku") for h in vector_hits):
+        # 5b. Expand ayah hits to full ruku passages (semantic queries only)
+        if intent.query_type not in ("counting", "listing") and any(
+            h["payload"].get("ruku") for h in vector_hits
+        ):
             vector_hits = await _expand_to_passages(vector_hits, request.top_k)
 
         # 6. Keyword search (for counting/listing queries with keywords)
@@ -300,6 +368,10 @@ async def query(request: QueryRequest):
             f"{intent.structural_context}\n"
             f"This information comes from the Ilm Atlas database structure."
         )
+    elif intent.query_type in ("counting", "listing"):
+        # Individual per-hit formatting for exact counting/listing
+        source_blocks = [_format_source(hit, i + 1) for i, hit in enumerate(hits)]
+        sources_text = "\n\n---\n\n".join(source_blocks)
     else:
         # Group ayah hits by ruku for passage-aware formatting
         source_blocks = []
@@ -384,7 +456,10 @@ async def query(request: QueryRequest):
             "The relevant sources have been retrieved and are shown below."
         )
 
-    # 7. Build citations
-    citations = [_build_citation(hit) for hit in hits]
+    # 7. Build citations (group consecutive same-ruku ayahs for semantic queries)
+    if intent.query_type in ("counting", "listing"):
+        citations = [_build_citation(hit) for hit in hits]
+    else:
+        citations = _build_grouped_citations(hits)
 
     return QueryResponse(answer=answer, citations=citations)
