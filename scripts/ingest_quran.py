@@ -98,6 +98,7 @@ def build_ayah_chunks(surahs: list[dict]) -> list[dict]:
                     "surah_name_english": surah["surah_name_english"],
                     "ayah_number": ar_ayah["numberInSurah"],
                     "juz": ar_ayah["juz"],
+                    "ruku": ar_ayah["ruku"],
                     "revelation_type": surah["revelation_type"],
                 },
             }
@@ -176,6 +177,7 @@ async def ingest_chunks(chunks: list[dict]) -> None:
                     "surah_name_english": meta["surah_name_english"],
                     "ayah_number": meta["ayah_number"],
                     "juz": meta["juz"],
+                    "ruku": meta["ruku"],
                     "page_number": c.get("page_number"),
                 }
                 payloads.append(payload)
