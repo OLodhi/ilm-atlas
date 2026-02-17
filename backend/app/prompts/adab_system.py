@@ -47,6 +47,8 @@ Base your answer ONLY on these sources:
 ## User Question
 {question}
 
+{query_context}
+
 ## Instructions
 Answer the user's question using ONLY the source texts above. Structure your \
 response clearly. Cite every source used. If the sources are insufficient, \

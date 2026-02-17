@@ -109,3 +109,52 @@ async def search(
         }
         for hit in results.points
     ]
+
+
+async def fetch_passage(ruku_number: int) -> list[dict]:
+    """Fetch all ayahs in a ruku (thematic passage) from Qdrant.
+
+    Returns a list of hit dicts sorted by (surah_number, ayah_number).
+    """
+    client = get_client()
+
+    scroll_filter = Filter(
+        must=[
+            FieldCondition(key="ruku", match=MatchValue(value=ruku_number)),
+            FieldCondition(key="chunk_type", match=MatchValue(value="ayah")),
+        ]
+    )
+
+    results_list: list[dict] = []
+    offset = None
+
+    while True:
+        results, next_offset = client.scroll(
+            collection_name=COLLECTION_NAME,
+            scroll_filter=scroll_filter,
+            limit=250,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        for point in results:
+            results_list.append(
+                {
+                    "id": str(point.id),
+                    "score": 1.0,
+                    "payload": point.payload or {},
+                }
+            )
+
+        if next_offset is None:
+            break
+        offset = next_offset
+
+    # Sort by Quran order
+    results_list.sort(key=lambda h: (
+        int(h["payload"].get("surah_number", 0)),
+        int(h["payload"].get("ayah_number", 0)),
+    ))
+
+    return results_list

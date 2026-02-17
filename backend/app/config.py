@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     # OpenRouter (LLM)
     openrouter_api_key: str = ""
-    openrouter_model: str = "qwen/qwen-2.5-72b-instruct"
+    openrouter_model: str = "qwen/qwen3-max"
 
     # Embedding model
     embedding_model: str = "BAAI/bge-m3"
