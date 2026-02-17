@@ -1,4 +1,5 @@
 import Markdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface AnswerPanelProps {
@@ -44,9 +45,13 @@ export function AnswerPanel({ answer, loading, error }: AnswerPanelProps) {
     );
   }
 
+  // Normalize single newlines to double so markdown renders paragraph breaks.
+  // Markdown requires \n\n for paragraphs; extra blank lines are harmless.
+  const normalized = answer.replace(/\n/g, "\n\n");
+
   return (
-    <div className="prose prose-stone max-w-none text-sm leading-relaxed">
-      <Markdown>{answer}</Markdown>
+    <div className="prose prose-stone max-w-none text-sm leading-relaxed prose-p:my-2 prose-headings:my-3 prose-blockquote:my-2 prose-ul:my-2 prose-ol:my-2">
+      <Markdown remarkPlugins={[remarkBreaks]}>{normalized}</Markdown>
     </div>
   );
 }
