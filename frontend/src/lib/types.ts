@@ -48,6 +48,7 @@ export interface Citation {
   source: string;
   chunk_type: "ayah" | "hadith" | "paragraph";
   metadata: Record<string, unknown> | null;
+  auto_translated?: boolean;
 }
 
 export interface QueryResponse {
@@ -58,6 +59,44 @@ export interface QueryResponse {
 export interface HealthResponse {
   status: string;
   version: string;
+}
+
+// --- Chat ---
+
+export interface ChatSession {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations: Citation[] | null;
+  created_at: string;
+}
+
+export interface ChatSessionDetail extends ChatSession {
+  messages: ChatMessage[];
+}
+
+export interface ChatSendRequest {
+  message: string;
+  madhab?: string | null;
+  category?: string | null;
+}
+
+export interface ChatSendResponse {
+  message: ChatMessage;
+  user_message: ChatMessage;
+  session_id: string;
+  session_title: string | null;
+}
+
+export interface ChatSessionListResponse {
+  sessions: ChatSession[];
 }
 
 export type Madhab = "hanafi" | "shafii" | "maliki" | "hanbali" | "general";

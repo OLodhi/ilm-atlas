@@ -26,12 +26,14 @@ def _is_latin(text: str) -> bool:
     return all(c.isascii() for c in text if c.isalpha())
 
 
-def _text_matches(text: str, keywords: list[str]) -> bool:
+def _text_matches(text: str | None, keywords: list[str]) -> bool:
     """Check if any keyword appears in the text (case-insensitive, diacritics-stripped).
 
     Latin-script keywords use word-boundary matching to avoid false positives
     (e.g. "isa" inside "disaster"). Arabic keywords use substring matching.
     """
+    if not text:
+        return False
     text_normalized = _strip_diacritics(text).lower()
     for kw in keywords:
         kw_normalized = _strip_diacritics(kw).lower()
