@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
 from app.models.db import Base
 from app.models.schemas import HealthResponse
-from app.routers import admin, query
+from app.routers import admin, chat, query
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.add_middleware(
 
 
 app.include_router(admin.router)
+app.include_router(chat.router)
 app.include_router(query.router)
 
 

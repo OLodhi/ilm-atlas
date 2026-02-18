@@ -5,6 +5,11 @@ import type {
   SourceResponse,
   BookResponse,
   HealthResponse,
+  ChatSession,
+  ChatSessionDetail,
+  ChatSessionListResponse,
+  ChatSendRequest,
+  ChatSendResponse,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -22,6 +27,9 @@ async function apiFetch<T>(
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`API error ${res.status}: ${body}`);
+  }
+  if (res.status === 204) {
+    return undefined as T;
   }
   return res.json();
 }
@@ -75,4 +83,58 @@ export async function fetchBooks(): Promise<BookResponse[]> {
 
 export async function checkHealth(): Promise<HealthResponse> {
   return apiFetch<HealthResponse>("/health");
+}
+
+// --- Chat ---
+
+export async function createChatSession(): Promise<ChatSession> {
+  return apiFetch<ChatSession>("/chat/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+export async function listChatSessions(): Promise<ChatSessionListResponse> {
+  return apiFetch<ChatSessionListResponse>("/chat/sessions");
+}
+
+export async function getChatSession(
+  sessionId: string
+): Promise<ChatSessionDetail> {
+  return apiFetch<ChatSessionDetail>(`/chat/sessions/${sessionId}`);
+}
+
+export async function deleteChatSession(sessionId: string): Promise<void> {
+  await apiFetch<void>(`/chat/sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function renameChatSession(
+  sessionId: string,
+  title: string
+): Promise<ChatSession> {
+  return apiFetch<ChatSession>(`/chat/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function sendChatMessage(
+  sessionId: string,
+  req: ChatSendRequest
+): Promise<ChatSendResponse> {
+  return apiFetch<ChatSendResponse>(
+    `/chat/sessions/${sessionId}/messages`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: req.message,
+        madhab: req.madhab === "all" ? null : req.madhab,
+        category: req.category === "all" ? null : req.category,
+      }),
+    }
+  );
 }

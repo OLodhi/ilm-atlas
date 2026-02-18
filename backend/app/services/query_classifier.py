@@ -23,6 +23,7 @@ class QueryIntent:
     max_results: int = 10
     metadata_filter: MetadataFilter | None = None
     structural_context: str | None = None
+    category_hint: str | None = None  # auto-detected from question text
 
 
 # Canonical name -> all known variants (English, transliteration, Arabic)
@@ -511,6 +512,25 @@ def _matches_any(text: str, patterns: list[str]) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
 
 
+def _detect_category(question: str) -> str | None:
+    """Auto-detect source category from the question text.
+
+    Returns a category string ("quran", "hadith") when the question
+    explicitly references a single source type, or None otherwise.
+    """
+    q_lower = question.lower()
+
+    mentions_quran = bool(re.search(r"\b(?:quran|qur'?an|quran'?ic)\b", q_lower))
+    mentions_hadith = bool(re.search(r"\b(?:hadith|ahadith|sunnah|hadeeths?)\b", q_lower))
+
+    # Only set a hint when exactly one source type is mentioned
+    if mentions_quran and not mentions_hadith:
+        return "quran"
+    if mentions_hadith and not mentions_quran:
+        return "hadith"
+    return None
+
+
 def classify_query(question: str) -> QueryIntent:
     """Classify query intent to determine search strategy."""
     # Check structural facts first (e.g. "how many surahs in the Quran?")
@@ -541,23 +561,27 @@ def classify_query(question: str) -> QueryIntent:
         )
 
     keywords = _extract_keywords(question)
+    category_hint = _detect_category(question)
 
     if _matches_any(question, _COUNTING_PATTERNS):
         return QueryIntent(
             query_type="counting",
             keywords=keywords,
-            max_results=100,
+            max_results=10000,
+            category_hint=category_hint,
         )
 
     if _matches_any(question, _LISTING_PATTERNS):
         return QueryIntent(
             query_type="listing",
             keywords=keywords,
-            max_results=50,
+            max_results=10000,
+            category_hint=category_hint,
         )
 
     return QueryIntent(
         query_type="semantic",
         keywords=[],
         max_results=10,
+        category_hint=category_hint,
     )

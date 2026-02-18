@@ -18,12 +18,12 @@ export function Header() {
             href="/"
             className={cn(
               "transition-colors hover:text-foreground",
-              pathname === "/"
+              pathname === "/" || pathname.startsWith("/chat")
                 ? "text-foreground"
                 : "text-muted-foreground"
             )}
           >
-            Research
+            Chat
           </Link>
           <Link
             href="/admin"
