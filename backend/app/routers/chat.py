@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -150,6 +151,7 @@ async def send_message(
         session_id=session.id,
         role="user",
         content=body.message,
+        created_at=datetime.now(timezone.utc),
     )
     db.add(user_msg)
     await db.flush()
@@ -215,6 +217,7 @@ async def send_message(
         role="assistant",
         content=answer,
         citations_json=[c.model_dump() for c in citations] if citations else None,
+        created_at=datetime.now(timezone.utc),
     )
     db.add(assistant_msg)
 
