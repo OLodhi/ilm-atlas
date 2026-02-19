@@ -3,8 +3,13 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Trash2, MessageSquare } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Plus, Trash2, MessageSquare, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useChatSessions } from "@/hooks/use-chat-sessions";
 
@@ -30,9 +35,10 @@ export function ChatSidebar({
     onSessionCreated?.();
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    await remove(id);
+  const handleDelete = (id: string, title: string) => {
+    const label = title || "New Chat";
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
+    remove(id);
     if (id === activeSessionId) {
       router.push("/");
     }
@@ -46,7 +52,7 @@ export function ChatSidebar({
           New Chat
         </Button>
       </div>
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto">
         <div className="space-y-1 p-2">
           {sessions.map((s) => (
             <div
@@ -58,19 +64,30 @@ export function ChatSidebar({
               )}
             >
               <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="flex-1 truncate">
+              <span className="min-w-0 flex-1 truncate">
                 {s.title || "New Chat"}
               </span>
-              <button
-                onClick={(e) => handleDelete(e, s.id)}
-                className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-              >
-                <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  onClick={(e) => e.stopPropagation()}
+                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => handleDelete(s.id, s.title ?? "")}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
