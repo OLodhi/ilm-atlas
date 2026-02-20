@@ -21,12 +21,61 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// --- Access token state (in-memory, never persisted) ---
+
+let accessToken: string | null = null;
+
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+// --- Auth types ---
+
+export interface RegisterData {
+  email: string;
+  password: string;
+  display_name?: string;
+}
+
+export interface LoginData {
+  email: string;
+  password: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  email_verified: boolean;
+  display_name: string | null;
+  role: string;
+  daily_query_limit: number;
+  created_at: string;
+}
+
+export interface UsageInfo {
+  used: number;
+  limit: number;
+  date: string;
+}
+
+// --- Fetch helpers ---
+
 async function apiFetch<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       ...options?.headers,
     },
@@ -40,6 +89,112 @@ async function apiFetch<T>(
   }
   return res.json();
 }
+
+async function authFetch<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const headers: Record<string, string> = {
+    ...((options.headers as Record<string, string>) || {}),
+  };
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+  return apiFetch<T>(path, { ...options, headers, credentials: "include" });
+}
+
+// --- Auth API functions ---
+
+export async function register(data: RegisterData): Promise<UserProfile> {
+  return apiFetch<UserProfile>("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function login(data: LoginData): Promise<TokenResponse> {
+  const response = await apiFetch<TokenResponse>("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    credentials: "include",
+  });
+  setAccessToken(response.access_token);
+  return response;
+}
+
+export async function refreshToken(): Promise<TokenResponse> {
+  const response = await apiFetch<TokenResponse>("/auth/refresh", {
+    method: "POST",
+    credentials: "include",
+  });
+  setAccessToken(response.access_token);
+  return response;
+}
+
+export async function logout(): Promise<void> {
+  await authFetch("/auth/logout", { method: "POST" });
+  setAccessToken(null);
+}
+
+export async function getMe(): Promise<UserProfile> {
+  return authFetch<UserProfile>("/auth/me");
+}
+
+export async function updateMe(data: {
+  display_name?: string;
+  current_password?: string;
+  new_password?: string;
+}): Promise<UserProfile> {
+  return authFetch<UserProfile>("/auth/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getUsage(): Promise<UsageInfo> {
+  return authFetch<UsageInfo>("/auth/usage");
+}
+
+export async function verifyEmail(
+  token: string
+): Promise<{ message: string }> {
+  return apiFetch("/auth/verify-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function forgotPassword(
+  email: string
+): Promise<{ message: string }> {
+  return apiFetch("/auth/forgot-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(
+  token: string,
+  new_password: string
+): Promise<{ message: string }> {
+  return apiFetch("/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password }),
+  });
+}
+
+export async function deleteAccount(): Promise<void> {
+  await authFetch("/auth/me", { method: "DELETE" });
+  setAccessToken(null);
+}
+
+// --- Query ---
 
 export async function postQuery(req: QueryRequest): Promise<QueryResponse> {
   return apiFetch<QueryResponse>("/query", {
@@ -74,18 +229,18 @@ export async function uploadFile(
   formData.append("category", metadata.category);
   formData.append("chunk_type", metadata.chunk_type);
 
-  return apiFetch<UploadResponse>("/admin/upload", {
+  return authFetch<UploadResponse>("/admin/upload", {
     method: "POST",
     body: formData,
   });
 }
 
 export async function fetchSources(): Promise<SourceResponse[]> {
-  return apiFetch<SourceResponse[]>("/admin/sources");
+  return authFetch<SourceResponse[]>("/admin/sources");
 }
 
 export async function fetchBooks(): Promise<BookResponse[]> {
-  return apiFetch<BookResponse[]>("/admin/books");
+  return authFetch<BookResponse[]>("/admin/books");
 }
 
 export async function checkHealth(): Promise<HealthResponse> {
@@ -95,24 +250,24 @@ export async function checkHealth(): Promise<HealthResponse> {
 // --- Chat ---
 
 export async function createChatSession(): Promise<ChatSession> {
-  return apiFetch<ChatSession>("/chat/sessions", {
+  return authFetch<ChatSession>("/chat/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
 }
 
 export async function listChatSessions(): Promise<ChatSessionListResponse> {
-  return apiFetch<ChatSessionListResponse>("/chat/sessions");
+  return authFetch<ChatSessionListResponse>("/chat/sessions");
 }
 
 export async function getChatSession(
   sessionId: string
 ): Promise<ChatSessionDetail> {
-  return apiFetch<ChatSessionDetail>(`/chat/sessions/${sessionId}`);
+  return authFetch<ChatSessionDetail>(`/chat/sessions/${sessionId}`);
 }
 
 export async function deleteChatSession(sessionId: string): Promise<void> {
-  await apiFetch<void>(`/chat/sessions/${sessionId}`, {
+  await authFetch<void>(`/chat/sessions/${sessionId}`, {
     method: "DELETE",
   });
 }
@@ -121,7 +276,7 @@ export async function renameChatSession(
   sessionId: string,
   title: string
 ): Promise<ChatSession> {
-  return apiFetch<ChatSession>(`/chat/sessions/${sessionId}`, {
+  return authFetch<ChatSession>(`/chat/sessions/${sessionId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
@@ -132,7 +287,7 @@ export async function sendChatMessage(
   sessionId: string,
   req: ChatSendRequest
 ): Promise<ChatSendResponse> {
-  return apiFetch<ChatSendResponse>(
+  return authFetch<ChatSendResponse>(
     `/chat/sessions/${sessionId}/messages`,
     {
       method: "POST",
@@ -152,11 +307,19 @@ export async function streamChatMessage(
   callbacks: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+
   const res = await fetch(
     `${API_URL}/chat/sessions/${sessionId}/messages/stream`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
+      credentials: "include",
       body: JSON.stringify({
         message: req.message,
         madhab: req.madhab === "all" ? null : req.madhab,
