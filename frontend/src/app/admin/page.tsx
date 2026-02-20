@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UploadForm } from "@/components/admin/upload-form";
 import { SourcesTable } from "@/components/admin/sources-table";
 import { BooksTable } from "@/components/admin/books-table";
+import { AuthGuard } from "@/components/shared/auth-guard";
 
 export default function AdminPage() {
   // Force sources table to re-fetch when upload completes
@@ -14,29 +15,31 @@ export default function AdminPage() {
   }, []);
 
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">
-        Admin Panel
-      </h1>
-      <Tabs defaultValue="upload">
-        <TabsList>
-          <TabsTrigger value="upload">Upload</TabsTrigger>
-          <TabsTrigger value="sources">Sources</TabsTrigger>
-          <TabsTrigger value="books">Books</TabsTrigger>
-        </TabsList>
+    <AuthGuard requireAdmin>
+      <main className="mx-auto max-w-5xl p-6">
+        <h1 className="mb-6 text-2xl font-semibold tracking-tight">
+          Admin Panel
+        </h1>
+        <Tabs defaultValue="upload">
+          <TabsList>
+            <TabsTrigger value="upload">Upload</TabsTrigger>
+            <TabsTrigger value="sources">Sources</TabsTrigger>
+            <TabsTrigger value="books">Books</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="upload" className="mt-6">
-          <UploadForm onUploaded={handleUploaded} />
-        </TabsContent>
+          <TabsContent value="upload" className="mt-6">
+            <UploadForm onUploaded={handleUploaded} />
+          </TabsContent>
 
-        <TabsContent value="sources" className="mt-6">
-          <SourcesTable />
-        </TabsContent>
+          <TabsContent value="sources" className="mt-6">
+            <SourcesTable />
+          </TabsContent>
 
-        <TabsContent value="books" className="mt-6">
-          <BooksTable />
-        </TabsContent>
-      </Tabs>
-    </main>
+          <TabsContent value="books" className="mt-6">
+            <BooksTable />
+          </TabsContent>
+        </Tabs>
+      </main>
+    </AuthGuard>
   );
 }
