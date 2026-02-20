@@ -10,6 +10,13 @@ import type {
   ChatSessionListResponse,
   ChatSendRequest,
   ChatSendResponse,
+  StreamCallbacks,
+  SSEUserMessageEvent,
+  SSEContentDeltaEvent,
+  SSECitationsEvent,
+  SSETitleEvent,
+  SSEDoneEvent,
+  SSEErrorEvent,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -137,4 +144,86 @@ export async function sendChatMessage(
       }),
     }
   );
+}
+
+export async function streamChatMessage(
+  sessionId: string,
+  req: ChatSendRequest,
+  callbacks: StreamCallbacks,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await fetch(
+    `${API_URL}/chat/sessions/${sessionId}/messages/stream`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: req.message,
+        madhab: req.madhab === "all" ? null : req.madhab,
+        category: req.category === "all" ? null : req.category,
+      }),
+      signal,
+    }
+  );
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API error ${res.status}: ${body}`);
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // Split on double-newline (SSE event boundary)
+    const parts = buffer.split("\n\n");
+    // Last part may be incomplete — keep it in the buffer
+    buffer = parts.pop()!;
+
+    for (const part of parts) {
+      if (!part.trim()) continue;
+
+      let eventType = "";
+      let dataStr = "";
+
+      for (const line of part.split("\n")) {
+        if (line.startsWith("event: ")) {
+          eventType = line.slice(7).trim();
+        } else if (line.startsWith("data: ")) {
+          dataStr = line.slice(6);
+        }
+      }
+
+      if (!eventType || !dataStr) continue;
+
+      const data = JSON.parse(dataStr);
+
+      switch (eventType) {
+        case "user_message":
+          callbacks.onUserMessage(data as SSEUserMessageEvent);
+          break;
+        case "content_delta":
+          callbacks.onContentDelta(data as SSEContentDeltaEvent);
+          break;
+        case "citations":
+          callbacks.onCitations(data as SSECitationsEvent);
+          break;
+        case "title":
+          callbacks.onTitle(data as SSETitleEvent);
+          break;
+        case "done":
+          callbacks.onDone(data as SSEDoneEvent);
+          break;
+        case "error":
+          callbacks.onError(data as SSEErrorEvent);
+          break;
+      }
+    }
+  }
 }

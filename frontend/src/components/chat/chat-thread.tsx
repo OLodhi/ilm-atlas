@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useEffect, useRef, useCallback } from "react";
 import { ChatMessage } from "./chat-message";
+import { STREAMING_MSG_ID } from "@/lib/constants";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -13,11 +13,37 @@ interface ChatThreadProps {
 
 export function ChatThread({ messages, sending }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
 
-  // Auto-scroll to bottom on new messages
+  const checkNearBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const threshold = 150;
+    isNearBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+  }, []);
+
+  // Track scroll position to decide whether to auto-scroll
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, sending]);
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkNearBottom, { passive: true });
+    return () => el.removeEventListener("scroll", checkNearBottom);
+  }, [checkNearBottom]);
+
+  // Content-aware auto-scroll: triggers on message count, sending state,
+  // and last message content length (for streaming token updates)
+  const lastMsg = messages[messages.length - 1];
+  const scrollTrigger = lastMsg
+    ? `${lastMsg.id}-${lastMsg.content.length}`
+    : "";
+
+  useEffect(() => {
+    if (isNearBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages.length, sending, scrollTrigger]);
 
   if (messages.length === 0 && !sending) {
     return (
@@ -34,13 +60,18 @@ export function ChatThread({ messages, sending }: ChatThreadProps) {
     );
   }
 
+  // Show skeleton only when sending and last message is NOT an assistant
+  // (during streaming the assistant bubble is already visible with content)
+  const showSkeleton =
+    sending && (!lastMsg || lastMsg.role !== "assistant");
+
   return (
-    <ScrollArea className="h-full">
+    <div ref={scrollRef} className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-4 p-4 pb-6">
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
         ))}
-        {sending && (
+        {showSkeleton && (
           <div className="flex justify-start">
             <div className="max-w-[85%] space-y-2 rounded-2xl rounded-bl-md bg-muted px-4 py-3">
               <Skeleton className="h-4 w-48" />
@@ -51,6 +82,6 @@ export function ChatThread({ messages, sending }: ChatThreadProps) {
         )}
         <div ref={bottomRef} />
       </div>
-    </ScrollArea>
+    </div>
   );
 }

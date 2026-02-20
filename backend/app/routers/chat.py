@@ -1,14 +1,17 @@
 import asyncio
+import json as json_mod
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.database import get_session
+from app.database import async_session, get_session
 from app.models.db import ChatMessage, ChatSession
 from app.models.schemas import (
     ChatMessageResponse,
@@ -23,7 +26,7 @@ from app.models.schemas import (
 from app.prompts.adab_chat_system import ADAB_CHAT_SYSTEM_PROMPT
 from app.prompts.query_rewrite import QUERY_REWRITE_SYSTEM_PROMPT
 from app.prompts.session_title import SESSION_TITLE_SYSTEM_PROMPT
-from app.services.llm import LLMError, call_llm, call_llm_chat
+from app.services.llm import LLMError, call_llm, call_llm_chat, stream_llm_chat
 from app.services.rag import build_numbered_citations, finalize_citations, retrieve_and_format
 
 logger = logging.getLogger(__name__)
@@ -317,3 +320,179 @@ async def _rewrite_query(
     except LLMError:
         logger.warning("Query rewrite failed, using original message")
     return follow_up
+
+
+# ---------------------------------------------------------------------------
+# SSE streaming endpoint
+# ---------------------------------------------------------------------------
+
+def _sse_event(event: str, data: dict) -> str:
+    """Format a Server-Sent Event string."""
+    return f"event: {event}\ndata: {json_mod.dumps(data)}\n\n"
+
+
+@router.post("/sessions/{session_id}/messages/stream")
+async def send_message_stream(
+    session_id: UUID,
+    body: ChatSendRequest,
+    request: Request,
+):
+    """Send a user message and stream the assistant response via SSE.
+
+    NOTE: This endpoint does NOT use Depends(get_session). FastAPI cleans up
+    yield-dependencies when the handler returns, which is BEFORE the
+    StreamingResponse generator finishes. The generator manages its own
+    DB session so the connection stays alive for the full stream lifecycle.
+    """
+    return StreamingResponse(
+        _stream_response(session_id, body, request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+async def _stream_response(
+    session_id: UUID,
+    body: ChatSendRequest,
+    request: Request,
+):
+    """Async generator that yields SSE events for a chat response."""
+    async with async_session() as db:
+        try:
+            # 0. Validate session
+            result = await db.execute(
+                select(ChatSession)
+                .options(selectinload(ChatSession.messages))
+                .where(ChatSession.id == session_id)
+            )
+            session = result.scalar_one_or_none()
+            if not session:
+                yield _sse_event("error", {"detail": "Session not found"})
+                return
+
+            # 1. Save user message
+            prior_message_count = len(session.messages)
+            user_msg = ChatMessage(
+                session_id=session.id,
+                role="user",
+                content=body.message,
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(user_msg)
+            await db.flush()
+
+            yield _sse_event("user_message", {
+                "id": str(user_msg.id),
+                "role": "user",
+                "content": user_msg.content,
+                "citations": None,
+                "created_at": user_msg.created_at.isoformat(),
+            })
+
+            # 2. Build conversation history
+            history_messages: list[dict[str, str]] = []
+            for m in session.messages:
+                if m.id == user_msg.id:
+                    continue
+                history_messages.append({"role": m.role, "content": m.content})
+
+            # 3. Rewrite follow-up queries
+            search_query = body.message
+            if history_messages:
+                search_query = await _rewrite_query(body.message, history_messages)
+                logger.info("Query rewritten: %r → %r", body.message, search_query)
+
+            # 4. RAG retrieval
+            rag_result = await retrieve_and_format(
+                question=search_query,
+                madhab=body.madhab,
+                category=body.category,
+            )
+
+            # 5. Build LLM messages
+            if rag_result:
+                current_user_content = (
+                    f"## Source Texts\n{rag_result.sources_text}\n\n"
+                    f"## User Question\n{body.message}\n\n"
+                    f"{rag_result.query_context}"
+                )
+            else:
+                current_user_content = body.message
+
+            llm_messages = history_messages + [
+                {"role": "user", "content": current_user_content},
+            ]
+
+            # 6. Start title generation concurrently (if first message)
+            needs_title = prior_message_count == 0 and not session.title
+            title_task = None
+            if needs_title:
+                title_task = asyncio.create_task(_generate_title(body.message))
+
+            # 7. Stream LLM response
+            full_answer = ""
+            llm_failed = False
+            try:
+                async for token in stream_llm_chat(
+                    system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
+                    messages=llm_messages,
+                ):
+                    full_answer += token
+                    yield _sse_event("content_delta", {"token": token})
+                    if await request.is_disconnected():
+                        logger.info("Client disconnected during streaming")
+                        if title_task:
+                            title_task.cancel()
+                        return
+            except (LLMError, httpx.ReadTimeout, httpx.ReadError) as exc:
+                logger.error("LLM streaming failed: %s", exc)
+                llm_failed = True
+                full_answer = (
+                    "I'm sorry, the AI service is temporarily unavailable. "
+                    "Please try again in a moment."
+                )
+                yield _sse_event("content_delta", {"token": full_answer})
+
+            # 8. Build citations
+            citations: list[Citation] = []
+            if rag_result and not llm_failed:
+                citations = build_numbered_citations(rag_result.hits, rag_result.intent)
+                citations = await finalize_citations(full_answer, citations, numbered=True)
+
+            if citations:
+                yield _sse_event("citations", {
+                    "citations": [c.model_dump() for c in citations],
+                })
+
+            # 9. Await title
+            if title_task:
+                try:
+                    session.title = await title_task
+                except Exception:
+                    logger.warning("Title generation failed during stream")
+                    session.title = body.message[:60] + ("..." if len(body.message) > 60 else "")
+                yield _sse_event("title", {"title": session.title})
+
+            # 10. Save assistant message and commit
+            assistant_msg = ChatMessage(
+                session_id=session.id,
+                role="assistant",
+                content=full_answer,
+                citations_json=[c.model_dump() for c in citations] if citations else None,
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(assistant_msg)
+            await db.commit()
+            await db.refresh(assistant_msg)
+
+            yield _sse_event("done", {
+                "message_id": str(assistant_msg.id),
+                "created_at": assistant_msg.created_at.isoformat(),
+            })
+
+        except Exception as exc:
+            logger.exception("Streaming error")
+            yield _sse_event("error", {"detail": str(exc)})
