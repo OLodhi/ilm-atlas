@@ -1,17 +1,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # --- Books ---
 
 class BookCreate(BaseModel):
-    title: str
-    author: str = ""
-    language: str = "both"
-    madhab: str = "general"
-    category: str = "general"
+    title: str = Field(..., min_length=1, max_length=500)
+    author: str = Field(default="", max_length=300)
+    language: str = Field(default="both", pattern="^(arabic|english|both)$")
+    madhab: str = Field(default="general", pattern="^(hanafi|shafii|maliki|hanbali|general)$")
+    category: str = Field(default="general", pattern="^(quran|hadith|fiqh|aqeedah|seerah|tafsir|general)$")
 
 
 class BookResponse(BaseModel):
@@ -43,12 +43,12 @@ class SourceResponse(BaseModel):
 # --- Upload ---
 
 class UploadRequest(BaseModel):
-    title: str
-    author: str = ""
-    language: str = "both"
-    madhab: str = "general"
-    category: str = "general"
-    chunk_type: str = "paragraph"  # ayah, hadith, paragraph
+    title: str = Field(..., min_length=1, max_length=500)
+    author: str = Field(default="", max_length=300)
+    language: str = Field(default="both", pattern="^(arabic|english|both)$")
+    madhab: str = Field(default="general", pattern="^(hanafi|shafii|maliki|hanbali|general)$")
+    category: str = Field(default="general", pattern="^(quran|hadith|fiqh|aqeedah|seerah|tafsir|general)$")
+    chunk_type: str = Field(default="paragraph", pattern="^(ayah|hadith|paragraph)$")
 
 
 class UploadResponse(BaseModel):
@@ -61,10 +61,10 @@ class UploadResponse(BaseModel):
 # --- Query ---
 
 class QueryRequest(BaseModel):
-    question: str
+    question: str = Field(..., min_length=1, max_length=500)
     madhab: str | None = None
     category: str | None = None
-    top_k: int = 10
+    top_k: int = Field(default=10, ge=1, le=50)
 
 
 class Citation(BaseModel):
@@ -113,7 +113,7 @@ class ChatSessionDetailResponse(BaseModel):
 
 
 class ChatSendRequest(BaseModel):
-    message: str
+    message: str = Field(..., min_length=1, max_length=2000)
     madhab: str | None = None
     category: str | None = None
 
@@ -130,7 +130,7 @@ class ChatSessionListResponse(BaseModel):
 
 
 class ChatSessionRenameRequest(BaseModel):
-    title: str
+    title: str = Field(..., min_length=1, max_length=200)
 
 
 # --- Health ---
