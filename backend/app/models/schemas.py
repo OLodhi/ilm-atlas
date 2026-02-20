@@ -1,7 +1,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Books ---
@@ -131,6 +133,93 @@ class ChatSessionListResponse(BaseModel):
 
 class ChatSessionRenameRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
+
+
+# --- Auth ---
+
+class RegisterRequest(BaseModel):
+    email: str = Field(..., max_length=320)
+    password: str = Field(..., min_length=8, max_length=128)
+    display_name: str | None = Field(default=None, min_length=2, max_length=100)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", v):
+            raise ValueError("Invalid email format")
+        return v
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, v: str | None) -> str | None:
+        if v is not None and not re.match(r"^[a-zA-Z0-9 ]+$", v):
+            raise ValueError("Display name can only contain letters, numbers, and spaces")
+        return v
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(..., max_length=320)
+    password: str = Field(..., max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    email: str
+    email_verified: bool
+    display_name: str | None
+    role: str
+    daily_query_limit: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, min_length=2, max_length=100)
+    current_password: str | None = Field(default=None, max_length=128)
+    new_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, v: str | None) -> str | None:
+        if v is not None and not re.match(r"^[a-zA-Z0-9 ]+$", v):
+            raise ValueError("Display name can only contain letters, numbers, and spaces")
+        return v
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class UsageResponse(BaseModel):
+    used: int
+    limit: int
+    date: str
 
 
 # --- Health ---
