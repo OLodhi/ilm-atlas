@@ -90,17 +90,63 @@ async function apiFetch<T>(
   return res.json();
 }
 
+// --- Refresh serialization (only one refresh in-flight at a time) ---
+
+let isRefreshing = false;
+let refreshPromise: Promise<void> | null = null;
+
+async function ensureValidToken(): Promise<void> {
+  if (isRefreshing && refreshPromise) {
+    return refreshPromise;
+  }
+  isRefreshing = true;
+  refreshPromise = refreshToken()
+    .then(() => {})
+    .finally(() => {
+      isRefreshing = false;
+      refreshPromise = null;
+    });
+  return refreshPromise;
+}
+
 async function authFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    ...((options.headers as Record<string, string>) || {}),
+  const buildHeaders = () => {
+    const headers: Record<string, string> = {
+      ...((options.headers as Record<string, string>) || {}),
+    };
+    if (accessToken) {
+      headers["Authorization"] = `Bearer ${accessToken}`;
+    }
+    return headers;
   };
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
+
+  try {
+    return await apiFetch<T>(path, {
+      ...options,
+      headers: buildHeaders(),
+      credentials: "include",
+    });
+  } catch (err) {
+    // Intercept 401 errors — try refreshing the token and retry once
+    if (err instanceof Error && err.message.startsWith("API error 401:")) {
+      try {
+        await ensureValidToken();
+        return await apiFetch<T>(path, {
+          ...options,
+          headers: buildHeaders(),
+          credentials: "include",
+        });
+      } catch {
+        // Refresh failed — user must re-login
+        accessToken = null;
+        throw err;
+      }
+    }
+    throw err;
   }
-  return apiFetch<T>(path, { ...options, headers, credentials: "include" });
 }
 
 // --- Auth API functions ---
