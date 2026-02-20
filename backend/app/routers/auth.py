@@ -563,3 +563,35 @@ async def get_my_usage(
     used, limit = await get_usage(current_user, session)
     today = datetime.now(timezone.utc).date().isoformat()
     return UsageResponse(used=used, limit=limit, date=today)
+
+
+# ---------------------------------------------------------------------------
+# 12. DELETE /auth/me
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Soft-delete the current user's account."""
+    current_user.is_active = False
+    current_user.email = f"deleted-{current_user.id}@deleted.invalid"
+    current_user.display_name = None
+    current_user.password_hash = "DELETED"
+
+    # Revoke all refresh tokens
+    result = await session.execute(
+        select(RefreshToken).where(
+            RefreshToken.user_id == current_user.id,
+            RefreshToken.revoked_at.is_(None),
+        )
+    )
+    for token in result.scalars():
+        token.revoked_at = datetime.now(timezone.utc)
+
+    await session.commit()
+    response.delete_cookie(REFRESH_COOKIE_NAME, path="/auth")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
