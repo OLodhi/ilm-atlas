@@ -2,7 +2,7 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import get_session
 from app.models.db import Book, Source
 from app.models.schemas import BookResponse, SourceResponse, UploadResponse
+from app.middleware.rate_limit import limiter
 from app.services.ingestion import _detect_file_type, run_ingestion
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,9 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.post("/upload", response_model=UploadResponse)
+@limiter.limit("5/minute")
 async def upload_file(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile,
     title: str = Form(...),
