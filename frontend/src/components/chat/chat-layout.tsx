@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { ChatSidebar } from "./chat-sidebar";
 import { ChatThread } from "./chat-thread";
 import { ChatInput } from "./chat-input";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
+import { useUsage } from "@/hooks/use-usage";
 
 interface ChatLayoutProps {
   sessionId: string;
@@ -25,7 +26,16 @@ export function ChatLayout({ sessionId }: ChatLayoutProps) {
     sendMessage,
   } = useChat(sessionId);
 
+  const { usage, refresh: refreshUsage } = useUsage();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const handleSend = useCallback(
+    async (text: string) => {
+      await sendMessage(text);
+      refreshUsage();
+    },
+    [sendMessage, refreshUsage]
+  );
 
   useEffect(() => {
     loadSession();
@@ -91,13 +101,18 @@ export function ChatLayout({ sessionId }: ChatLayoutProps) {
 
         {/* Input */}
         <ChatInput
-          onSend={sendMessage}
+          onSend={handleSend}
           sending={sending}
           madhab={madhab}
           onMadhabChange={setMadhab}
           category={category}
           onCategoryChange={setCategory}
         />
+        {usage && (
+          <div className="shrink-0 border-t px-4 py-1.5 text-center text-xs text-muted-foreground">
+            {usage.used}/{usage.limit} queries today
+          </div>
+        )}
       </div>
     </div>
   );
