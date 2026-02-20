@@ -4,6 +4,7 @@ Extracted from query.py so both the /query endpoint and /chat endpoints
 can share the same retrieval logic.
 """
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -89,11 +90,63 @@ def build_citations(hits: list[dict], intent: QueryIntent) -> list[Citation]:
     return _build_grouped_citations(hits)
 
 
-async def finalize_citations(answer: str, citations: list[Citation]) -> list[Citation]:
-    """Deduplicate, auto-translate, and filter citations against the answer."""
-    citations = _deduplicate_citations(citations)
+def build_numbered_citations(hits: list[dict], intent: QueryIntent) -> list[Citation]:
+    """Build citations in the exact order matching [Source N] blocks.
+
+    Mirrors the grouping logic from ``_build_sources_and_context`` so that
+    citation index N in the returned list corresponds to ``[Source N]`` in the
+    LLM prompt.
+    """
+    if intent.query_type in ("counting", "listing"):
+        return [_build_citation(hit) for hit in hits]
+
+    # Same ruku-grouping walk as _build_sources_and_context for semantic queries
+    citations: list[Citation] = []
+    i = 0
+    while i < len(hits):
+        hit = hits[i]
+        payload = hit["payload"]
+        ruku = payload.get("ruku")
+
+        if ruku is not None and payload.get("chunk_type") == "ayah":
+            group = [hit]
+            j = i + 1
+            while j < len(hits):
+                next_p = hits[j]["payload"]
+                if (next_p.get("ruku") == ruku
+                        and next_p.get("chunk_type") == "ayah"):
+                    group.append(hits[j])
+                    j += 1
+                else:
+                    break
+            # Always use passage citation for ruku groups (matches
+            # _format_passage used by _build_sources_and_context)
+            citations.append(_build_passage_citation(group))
+            i = j
+        else:
+            citations.append(_build_citation(hit))
+            i += 1
+
+    return citations
+
+
+async def finalize_citations(
+    answer: str,
+    citations: list[Citation],
+    *,
+    numbered: bool = False,
+) -> list[Citation]:
+    """Deduplicate, auto-translate, and optionally filter citations.
+
+    When *numbered* is True the citation order already matches the ``[Source N]``
+    numbering used by the LLM, so we skip both deduplication (which would shift
+    indices) and the answer-text-matching reorder step.
+    """
+    if not numbered:
+        citations = _deduplicate_citations(citations)
     citations = await translate_arabic_citations(citations)
-    citations = _filter_and_order_citations(answer, citations)
+    if not numbered:
+        citations = _filter_and_order_citations(answer, citations)
     return citations
 
 
@@ -124,16 +177,16 @@ async def _vector_search_pipeline(
             top_k, effective_top_k, len(all_phrases),
         )
 
-    # Search with each vector and merge results (keep highest score)
+    # Search with each vector in parallel and merge results (keep highest score)
     search_limit = effective_top_k * 3
+    search_tasks = [
+        search(query_vector=vec, top_k=search_limit, madhab=madhab, category=category)
+        for vec in all_vectors
+    ]
+    all_results = await asyncio.gather(*search_tasks)
+
     all_hits: dict[str, dict] = {}
-    for vec in all_vectors:
-        hits_batch = await search(
-            query_vector=vec,
-            top_k=search_limit,
-            madhab=madhab,
-            category=category,
-        )
+    for hits_batch in all_results:
         for hit in hits_batch:
             pid = hit["id"]
             if pid not in all_hits or hit["score"] > all_hits[pid]["score"]:
@@ -659,8 +712,10 @@ async def _expand_to_passages(
 
     expanded: list[dict] = []
     seen_ids: set[str] = set()
-    for ruku_num in top_rukus:
-        passage_hits = await fetch_passage(ruku_num)
+    passage_results = await asyncio.gather(
+        *[fetch_passage(ruku_num) for ruku_num in top_rukus]
+    )
+    for passage_hits in passage_results:
         for h in passage_hits:
             if h["id"] not in seen_ids:
                 original = next(
