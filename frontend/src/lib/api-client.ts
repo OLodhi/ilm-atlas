@@ -189,6 +189,12 @@ export async function resetPassword(
   });
 }
 
+export async function resendVerification(): Promise<{ message: string }> {
+  return authFetch<{ message: string }>("/auth/resend-verification", {
+    method: "POST",
+  });
+}
+
 export async function deleteAccount(): Promise<void> {
   await authFetch("/auth/me", { method: "DELETE" });
   setAccessToken(null);
