@@ -5,8 +5,11 @@ from fastapi import FastAPI
 
 logging.basicConfig(level=logging.INFO)
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import settings
 from app.database import engine
 from app.models.db import Base
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.models.schemas import HealthResponse
 from app.routers import admin, chat, query
 from app.services.llm import close_http_client
@@ -29,12 +32,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[settings.frontend_url],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
