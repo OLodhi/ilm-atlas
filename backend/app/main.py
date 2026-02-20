@@ -14,7 +14,7 @@ from app.models.db import Base
 from app.middleware.rate_limit import limiter
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.models.schemas import HealthResponse
-from app.routers import admin, chat, query
+from app.routers import admin, auth, chat, query
 from app.services.llm import close_http_client
 
 
@@ -49,6 +49,7 @@ app.add_middleware(
 
 
 app.include_router(admin.router)
+app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(query.router)
 
