@@ -1,3 +1,4 @@
+import html
 import logging
 
 import resend
@@ -15,7 +16,7 @@ def _init_resend():
 async def send_verification_email(to_email: str, token: str, display_name: str | None = None) -> bool:
     """Send email verification link."""
     _init_resend()
-    name = display_name or "there"
+    name = html.escape(display_name or "there")
     verify_url = f"{settings.frontend_url}/verify-email?token={token}"
 
     try:
@@ -42,7 +43,7 @@ async def send_verification_email(to_email: str, token: str, display_name: str |
 async def send_password_reset_email(to_email: str, token: str, display_name: str | None = None) -> bool:
     """Send password reset link."""
     _init_resend()
-    name = display_name or "there"
+    name = html.escape(display_name or "there")
     reset_url = f"{settings.frontend_url}/reset-password?token={token}"
 
     try:
