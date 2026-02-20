@@ -9,6 +9,7 @@ from app.database import engine
 from app.models.db import Base
 from app.models.schemas import HealthResponse
 from app.routers import admin, chat, query
+from app.services.llm import close_http_client
 
 
 @asynccontextmanager
@@ -17,6 +18,7 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
+    await close_http_client()
     await engine.dispose()
 
 
