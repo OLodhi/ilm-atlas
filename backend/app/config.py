@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
 
+    # Hadith API
+    hadith_api_key: str = ""
+
     # OpenRouter (LLM)
     openrouter_api_key: str = ""
     openrouter_model: str = "qwen/qwen3-max"

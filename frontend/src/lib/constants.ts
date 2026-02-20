@@ -31,11 +31,13 @@ export const CHUNK_TYPE_OPTIONS = [
 export const CHUNK_TYPE_COLORS: Record<string, string> = {
   ayah: "border-l-emerald-600",
   hadith: "border-l-amber-600",
+  tafsir: "border-l-violet-600",
   paragraph: "border-l-slate-400",
 };
 
 export const CHUNK_TYPE_BADGE_VARIANTS: Record<string, string> = {
-  ayah: "bg-emerald-100 text-emerald-800",
-  hadith: "bg-amber-100 text-amber-800",
-  paragraph: "bg-slate-100 text-slate-800",
+  ayah: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  hadith: "bg-amber-50 text-amber-800 border-amber-200",
+  tafsir: "bg-violet-50 text-violet-800 border-violet-200",
+  paragraph: "bg-slate-50 text-slate-700 border-slate-200",
 };

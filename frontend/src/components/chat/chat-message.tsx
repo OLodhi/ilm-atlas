@@ -2,16 +2,14 @@
 
 import Markdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
-import { cn } from "@/lib/utils";
+import { CitationMarkdown } from "./citation-markdown";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
 
 interface ChatMessageProps {
   message: ChatMessageType;
-  isSelected: boolean;
-  onSelect: () => void;
 }
 
-export function ChatMessage({ message, isSelected, onSelect }: ChatMessageProps) {
+export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
 
   if (isUser) {
@@ -28,16 +26,16 @@ export function ChatMessage({ message, isSelected, onSelect }: ChatMessageProps)
 
   return (
     <div className="flex justify-start">
-      <div
-        className={cn(
-          "max-w-[85%] rounded-2xl rounded-bl-md bg-muted px-4 py-3 transition-colors",
-          hasCitations && "cursor-pointer hover:bg-muted/80",
-          isSelected && hasCitations && "ring-2 ring-primary/30"
-        )}
-        onClick={hasCitations ? onSelect : undefined}
-      >
+      <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-muted px-4 py-3">
         <div className="prose prose-stone max-w-none text-sm leading-relaxed prose-p:my-2 prose-headings:my-3 prose-blockquote:my-2 prose-ul:my-2 prose-ol:my-2">
-          <Markdown remarkPlugins={[remarkBreaks]}>{message.content}</Markdown>
+          {hasCitations ? (
+            <CitationMarkdown
+              content={message.content}
+              citations={message.citations!}
+            />
+          ) : (
+            <Markdown remarkPlugins={[remarkBreaks]}>{message.content}</Markdown>
+          )}
         </div>
         {hasCitations && (
           <div className="mt-2 text-[11px] text-muted-foreground">

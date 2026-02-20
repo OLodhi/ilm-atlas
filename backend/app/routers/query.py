@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from app.models.schemas import QueryRequest, QueryResponse
 from app.prompts.adab_system import ADAB_SYSTEM_PROMPT
 from app.services.llm import LLMError, call_llm
-from app.services.rag import build_citations, finalize_citations, retrieve_and_format
+from app.services.rag import build_numbered_citations, finalize_citations, retrieve_and_format
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["query"])
@@ -37,17 +37,22 @@ async def query(request: QueryRequest):
     )
 
     # 3. Call LLM
+    llm_failed = False
     try:
         answer = await call_llm(system_prompt=prompt, user_message=request.question)
     except LLMError as exc:
         logger.error("LLM call failed: %s", exc)
+        llm_failed = True
         answer = (
             "I'm sorry, the AI service is temporarily unavailable. "
             "The relevant sources have been retrieved and are shown below."
         )
 
-    # 4. Build and finalize citations
-    citations = build_citations(rag_result.hits, rag_result.intent)
-    citations = await finalize_citations(answer, citations)
+    # 4. Build and finalize citations (numbered to match [Source N] blocks)
+    # Skip when the LLM failed — no [N] markers in the error message.
+    citations: list[Citation] = []
+    if not llm_failed:
+        citations = build_numbered_citations(rag_result.hits, rag_result.intent)
+        citations = await finalize_citations(answer, citations, numbered=True)
 
     return QueryResponse(answer=answer, citations=citations)
