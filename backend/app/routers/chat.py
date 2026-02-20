@@ -7,6 +7,8 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+
+from app.middleware.rate_limit import limiter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -133,7 +135,9 @@ async def rename_session(
     "/sessions/{session_id}/messages",
     response_model=ChatSendResponse,
 )
+@limiter.limit("30/minute")
 async def send_message(
+    request: Request,
     session_id: UUID,
     body: ChatSendRequest,
     db: AsyncSession = Depends(get_session),
@@ -332,6 +336,7 @@ def _sse_event(event: str, data: dict) -> str:
 
 
 @router.post("/sessions/{session_id}/messages/stream")
+@limiter.limit("30/minute")
 async def send_message_stream(
     session_id: UUID,
     body: ChatSendRequest,

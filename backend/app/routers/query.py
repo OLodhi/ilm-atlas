@@ -1,7 +1,8 @@
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
+from app.middleware.rate_limit import limiter
 from app.models.schemas import QueryRequest, QueryResponse
 from app.prompts.adab_system import ADAB_SYSTEM_PROMPT
 from app.services.llm import LLMError, call_llm
@@ -12,14 +13,15 @@ router = APIRouter(tags=["query"])
 
 
 @router.post("/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
+@limiter.limit("10/minute")
+async def query(request: Request, body: QueryRequest):
     """Answer a question using RAG: classify → embed → search → LLM → respond."""
     # 1. Retrieve and format sources
     rag_result = await retrieve_and_format(
-        question=request.question,
-        madhab=request.madhab,
-        category=request.category,
-        top_k=request.top_k,
+        question=body.question,
+        madhab=body.madhab,
+        category=body.category,
+        top_k=body.top_k,
     )
 
     if rag_result is None:
@@ -32,14 +34,14 @@ async def query(request: QueryRequest):
     # 2. Build LLM prompt
     prompt = ADAB_SYSTEM_PROMPT.format(
         sources=rag_result.sources_text,
-        question=request.question,
+        question=body.question,
         query_context=rag_result.query_context,
     )
 
     # 3. Call LLM
     llm_failed = False
     try:
-        answer = await call_llm(system_prompt=prompt, user_message=request.question)
+        answer = await call_llm(system_prompt=prompt, user_message=body.question)
     except LLMError as exc:
         logger.error("LLM call failed: %s", exc)
         llm_failed = True
