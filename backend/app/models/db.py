@@ -68,6 +68,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="user")  # user, admin
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     daily_query_limit: Mapped[int] = mapped_column(Integer, default=50)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

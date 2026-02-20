@@ -149,11 +149,24 @@ async def login(
     )
     user = result.scalar_one_or_none()
 
+    # Check if account is locked
+    if user and user.locked_until and user.locked_until > datetime.now(timezone.utc):
+        remaining = int((user.locked_until - datetime.now(timezone.utc)).total_seconds() / 60) + 1
+        raise HTTPException(
+            status_code=429,
+            detail=f"Account temporarily locked. Try again in {remaining} minute(s).",
+        )
+
     # Verify password (constant-time even if user not found)
     if user is None or not verify_password(body.password, user.password_hash):
+        if user:
+            user.failed_login_attempts += 1
+            if user.failed_login_attempts >= 5:
+                user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+            await session.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            detail="Invalid email or password.",
         )
 
     # Check account is active
@@ -162,6 +175,10 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is disabled. Please contact support.",
         )
+
+    # Reset failed login attempts on successful login
+    user.failed_login_attempts = 0
+    user.locked_until = None
 
     # Create access token
     access_token = create_access_token(str(user.id), user.role)
