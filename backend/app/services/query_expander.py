@@ -12,7 +12,7 @@ async def expand_query(question: str) -> list[str]:
         response = await call_llm(
             system_prompt=QUERY_EXPANSION_PROMPT,
             user_message=question,
-            max_tokens=300,
+            max_tokens=200,
             temperature=0.5,
         )
     except LLMError:
@@ -20,7 +20,7 @@ async def expand_query(question: str) -> list[str]:
         return []
 
     phrases = [line.strip() for line in response.splitlines() if line.strip()]
-    # Cap at 5 phrases to limit search fan-out
-    phrases = phrases[:5]
+    # Cap at 8 phrases to allow broader sub-topic coverage
+    phrases = phrases[:8]
     logger.info("Query expanded: %s", phrases)
     return phrases

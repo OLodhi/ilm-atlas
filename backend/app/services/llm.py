@@ -8,6 +8,25 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+# Shared persistent HTTP client — avoids TCP+TLS handshake per LLM call
+_http_client: httpx.AsyncClient | None = None
+
+
+def get_http_client() -> httpx.AsyncClient:
+    """Lazily create and return a shared httpx.AsyncClient."""
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(timeout=60.0)
+    return _http_client
+
+
+async def close_http_client() -> None:
+    """Close the shared HTTP client (call on app shutdown)."""
+    global _http_client
+    if _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
+
 
 class LLMError(Exception):
     """Raised when the LLM service fails."""
@@ -40,8 +59,8 @@ async def call_llm(
         "max_tokens": max_tokens,
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(OPENROUTER_URL, json=payload, headers=headers)
+    client = get_http_client()
+    resp = await client.post(OPENROUTER_URL, json=payload, headers=headers)
 
     if resp.status_code != 200:
         body = resp.text
@@ -118,8 +137,8 @@ async def call_llm_chat(
         "max_tokens": max_tokens,
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(OPENROUTER_URL, json=payload, headers=headers)
+    client = get_http_client()
+    resp = await client.post(OPENROUTER_URL, json=payload, headers=headers)
 
     if resp.status_code != 200:
         body = resp.text

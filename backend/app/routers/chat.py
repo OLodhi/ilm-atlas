@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -23,7 +24,7 @@ from app.prompts.adab_chat_system import ADAB_CHAT_SYSTEM_PROMPT
 from app.prompts.query_rewrite import QUERY_REWRITE_SYSTEM_PROMPT
 from app.prompts.session_title import SESSION_TITLE_SYSTEM_PROMPT
 from app.services.llm import LLMError, call_llm, call_llm_chat
-from app.services.rag import build_citations, finalize_citations, retrieve_and_format
+from app.services.rag import build_numbered_citations, finalize_citations, retrieve_and_format
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -193,6 +194,7 @@ async def send_message(
     ]
 
     # 8. Call LLM
+    llm_failed = False
     try:
         answer = await call_llm_chat(
             system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
@@ -200,18 +202,30 @@ async def send_message(
         )
     except LLMError as exc:
         logger.error("LLM call failed: %s", exc)
+        llm_failed = True
         answer = (
             "I'm sorry, the AI service is temporarily unavailable. "
             "Please try again in a moment."
         )
 
-    # 9. Build citations
+    # 9. Build citations + auto-title (parallel when both needed)
+    # Skip citations when the LLM failed — no [N] markers in the error message.
     citations: list[Citation] = []
-    if rag_result:
-        citations = build_citations(rag_result.hits, rag_result.intent)
-        citations = await finalize_citations(answer, citations)
+    needs_title = prior_message_count == 0 and not session.title
+    if rag_result and not llm_failed:
+        citations = build_numbered_citations(rag_result.hits, rag_result.intent)
+        if needs_title:
+            citations, title = await asyncio.gather(
+                finalize_citations(answer, citations, numbered=True),
+                _generate_title(body.message),
+            )
+            session.title = title
+        else:
+            citations = await finalize_citations(answer, citations, numbered=True)
+    elif needs_title:
+        session.title = await _generate_title(body.message)
 
-    # 9. Save assistant message
+    # 10. Save assistant message
     assistant_msg = ChatMessage(
         session_id=session.id,
         role="assistant",
@@ -220,10 +234,6 @@ async def send_message(
         created_at=datetime.now(timezone.utc),
     )
     db.add(assistant_msg)
-
-    # 10. Auto-title after first exchange
-    if prior_message_count == 0 and not session.title:
-        session.title = await _generate_title(body.message)
 
     await db.commit()
     await db.refresh(user_msg)
