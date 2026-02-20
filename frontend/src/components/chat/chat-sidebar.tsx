@@ -15,19 +15,28 @@ import { useChatSessions } from "@/hooks/use-chat-sessions";
 
 interface ChatSidebarProps {
   activeSessionId?: string;
+  activeSessionTitle?: string | null;
   onSessionCreated?: () => void;
 }
 
 export function ChatSidebar({
   activeSessionId,
+  activeSessionTitle,
   onSessionCreated,
 }: ChatSidebarProps) {
   const router = useRouter();
-  const { sessions, refresh, create, remove } = useChatSessions();
+  const { sessions, refresh, create, remove, updateTitle } = useChatSessions();
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Sync streamed title into the sidebar list
+  useEffect(() => {
+    if (activeSessionId && activeSessionTitle) {
+      updateTitle(activeSessionId, activeSessionTitle);
+    }
+  }, [activeSessionId, activeSessionTitle, updateTitle]);
 
   const handleNew = async () => {
     const session = await create();

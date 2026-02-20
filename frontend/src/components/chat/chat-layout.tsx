@@ -49,6 +49,7 @@ export function ChatLayout({ sessionId }: ChatLayoutProps) {
       >
         <ChatSidebar
           activeSessionId={sessionId}
+          activeSessionTitle={session?.title}
           onSessionCreated={() => setSidebarOpen(false)}
         />
       </div>

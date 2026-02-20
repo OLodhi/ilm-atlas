@@ -3,6 +3,7 @@
 import Markdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import { CitationMarkdown } from "./citation-markdown";
+import { STREAMING_MSG_ID } from "@/lib/constants";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
 
 interface ChatMessageProps {
@@ -22,7 +23,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
     );
   }
 
+  const isStreaming = message.id === STREAMING_MSG_ID;
   const hasCitations = message.citations && message.citations.length > 0;
+  const displayContent = isStreaming
+    ? message.content + "\u258C"
+    : message.content;
 
   return (
     <div className="flex justify-start">
@@ -34,7 +39,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
               citations={message.citations!}
             />
           ) : (
-            <Markdown remarkPlugins={[remarkBreaks]}>{message.content}</Markdown>
+            <Markdown remarkPlugins={[remarkBreaks]}>{displayContent}</Markdown>
           )}
         </div>
         {hasCitations && (

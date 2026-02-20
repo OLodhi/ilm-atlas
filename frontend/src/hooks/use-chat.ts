@@ -1,34 +1,67 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { getChatSession, sendChatMessage } from "@/lib/api-client";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { getChatSession, streamChatMessage } from "@/lib/api-client";
+import { STREAMING_MSG_ID } from "@/lib/constants";
 import type { ChatMessage, ChatSessionDetail } from "@/lib/types";
 
-// Module-level map of in-flight send requests per session.
-// Survives component unmounts so navigating away doesn't lose the request.
-interface PendingSend {
+// Module-level map of in-flight streams per session.
+// Survives component unmounts so navigating away doesn't lose the stream.
+interface PendingStream {
   promise: Promise<void>;
   optimisticMessage: ChatMessage;
 }
-const pendingSends = new Map<string, PendingSend>();
+const pendingStreams = new Map<string, PendingStream>();
 
 export function useChat(sessionId: string) {
   const [session, setSession] = useState<ChatSessionDetail | null>(null);
-  const [sending, setSending] = useState(() => pendingSends.has(sessionId));
+  const [sending, setSending] = useState(() => pendingStreams.has(sessionId));
   const [error, setError] = useState<string | null>(null);
   const [madhab, setMadhab] = useState("all");
   const [category, setCategory] = useState("all");
 
+  // RAF-throttled token buffer
+  const tokenBufferRef = useRef("");
+  const rafRef = useRef<number | null>(null);
+
+  // Cleanup RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, []);
+
+  const flushTokenBuffer = useCallback(() => {
+    rafRef.current = null;
+    const buffered = tokenBufferRef.current;
+    if (!buffered) return;
+    tokenBufferRef.current = "";
+
+    setSession((prev) => {
+      if (!prev) return prev;
+      const msgs = prev.messages;
+      const last = msgs[msgs.length - 1];
+      if (!last || last.id !== STREAMING_MSG_ID) return prev;
+      return {
+        ...prev,
+        messages: [
+          ...msgs.slice(0, -1),
+          { ...last, content: last.content + buffered },
+        ],
+      };
+    });
+  }, []);
+
   const loadSession = useCallback(async () => {
     setError(null);
 
-    // If there's an in-flight send for this session, show existing messages
+    // If there's an in-flight stream for this session, show existing messages
     // plus the optimistic user message while we wait for the response.
-    const pending = pendingSends.get(sessionId);
+    const pending = pendingStreams.get(sessionId);
     if (pending) {
       setSending(true);
-      // Load current session data and append the optimistic user message
-      // so the user sees their question while the response generates.
       try {
         const current = await getChatSession(sessionId);
         setSession({
@@ -41,7 +74,7 @@ export function useChat(sessionId: string) {
       try {
         await pending.promise;
       } catch {
-        // Send failed — loadSession will still fetch whatever is in the DB
+        // Stream failed — loadSession will still fetch whatever is in the DB
       }
       setSending(false);
     }
@@ -77,28 +110,116 @@ export function useChat(sessionId: string) {
           : prev
       );
 
-      // Create the send promise and store it module-level so it
-      // survives component unmounts during navigation.
-      const sendPromise = (async () => {
+      const streamPromise = (async () => {
         try {
-          const result = await sendChatMessage(sessionId, {
-            message: text,
-            madhab,
-            category,
-          });
+          await streamChatMessage(
+            sessionId,
+            { message: text, madhab, category },
+            {
+              onUserMessage: (data) => {
+                // Replace temp user msg with real one, add streaming placeholder
+                setSession((prev) => {
+                  if (!prev) return prev;
+                  const messages = prev.messages.filter(
+                    (m) => m.id !== tempUserMsg.id
+                  );
+                  const realUserMsg: ChatMessage = {
+                    id: data.id,
+                    role: "user",
+                    content: data.content,
+                    citations: null,
+                    created_at: data.created_at,
+                  };
+                  const streamingMsg: ChatMessage = {
+                    id: STREAMING_MSG_ID,
+                    role: "assistant",
+                    content: "",
+                    citations: null,
+                    created_at: new Date().toISOString(),
+                  };
+                  return {
+                    ...prev,
+                    messages: [...messages, realUserMsg, streamingMsg],
+                  };
+                });
+              },
 
-          // Replace temp user message with real one and append assistant response
-          setSession((prev) => {
-            if (!prev) return prev;
-            const messages = prev.messages.filter(
-              (m) => m.id !== tempUserMsg.id
-            );
-            return {
-              ...prev,
-              title: result.session_title ?? prev.title,
-              messages: [...messages, result.user_message, result.message],
-            };
-          });
+              onContentDelta: (data) => {
+                tokenBufferRef.current += data.token;
+                if (rafRef.current === null) {
+                  rafRef.current = requestAnimationFrame(flushTokenBuffer);
+                }
+              },
+
+              onCitations: (data) => {
+                // Flush any remaining tokens first
+                if (rafRef.current !== null) {
+                  cancelAnimationFrame(rafRef.current);
+                  rafRef.current = null;
+                }
+                const buffered = tokenBufferRef.current;
+                tokenBufferRef.current = "";
+
+                setSession((prev) => {
+                  if (!prev) return prev;
+                  const msgs = prev.messages;
+                  const last = msgs[msgs.length - 1];
+                  if (!last || last.id !== STREAMING_MSG_ID) return prev;
+                  return {
+                    ...prev,
+                    messages: [
+                      ...msgs.slice(0, -1),
+                      {
+                        ...last,
+                        content: last.content + buffered,
+                        citations: data.citations,
+                      },
+                    ],
+                  };
+                });
+              },
+
+              onTitle: (data) => {
+                setSession((prev) =>
+                  prev ? { ...prev, title: data.title } : prev
+                );
+              },
+
+              onDone: (data) => {
+                // Flush remaining buffer
+                if (rafRef.current !== null) {
+                  cancelAnimationFrame(rafRef.current);
+                  rafRef.current = null;
+                }
+                const buffered = tokenBufferRef.current;
+                tokenBufferRef.current = "";
+
+                // Replace streaming ID with real message ID
+                setSession((prev) => {
+                  if (!prev) return prev;
+                  const msgs = prev.messages;
+                  const last = msgs[msgs.length - 1];
+                  if (!last || last.id !== STREAMING_MSG_ID) return prev;
+                  return {
+                    ...prev,
+                    messages: [
+                      ...msgs.slice(0, -1),
+                      {
+                        ...last,
+                        id: data.message_id,
+                        content: last.content + buffered,
+                        created_at: data.created_at,
+                      },
+                    ],
+                  };
+                });
+              },
+
+              onError: (data) => {
+                setError(data.detail);
+              },
+            }
+          );
         } catch (err) {
           setError(
             err instanceof Error ? err.message : "Failed to send message"
@@ -109,31 +230,31 @@ export function useChat(sessionId: string) {
               ? {
                   ...prev,
                   messages: prev.messages.filter(
-                    (m) => m.id !== tempUserMsg.id
+                    (m) =>
+                      m.id !== tempUserMsg.id && m.id !== STREAMING_MSG_ID
                   ),
                 }
               : prev
           );
-          throw err; // Re-throw so pendingSends waiters see the failure
+          throw err;
         } finally {
-          pendingSends.delete(sessionId);
+          pendingStreams.delete(sessionId);
           setSending(false);
         }
       })();
 
-      pendingSends.set(sessionId, {
-        promise: sendPromise,
+      pendingStreams.set(sessionId, {
+        promise: streamPromise,
         optimisticMessage: tempUserMsg,
       });
 
-      // Await locally so errors are caught within this component instance
       try {
-        await sendPromise;
+        await streamPromise;
       } catch {
         // Already handled above
       }
     },
-    [sessionId, sending, madhab, category]
+    [sessionId, sending, madhab, category, flushTokenBuffer]
   );
 
   return {

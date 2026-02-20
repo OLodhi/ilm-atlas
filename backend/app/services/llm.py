@@ -1,4 +1,6 @@
+import json as json_mod
 import logging
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -151,3 +153,58 @@ async def call_llm_chat(
     except (KeyError, IndexError) as exc:
         logger.error("Unexpected LLM response shape: %s", data)
         raise LLMError("Unexpected response from LLM service") from exc
+
+
+async def stream_llm_chat(
+    system_prompt: str,
+    messages: list[dict[str, str]],
+    max_tokens: int = 2000,
+    temperature: float = 0.3,
+) -> AsyncIterator[str]:
+    """Stream LLM tokens via OpenRouter (SSE).
+
+    Yields individual token strings as they arrive.
+    Raises LLMError on non-200 status before streaming begins.
+    """
+    messages = _trim_history(messages)
+
+    headers = {
+        "Authorization": f"Bearer {settings.openrouter_api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ilm-atlas.app",
+        "X-Title": "Ilm Atlas",
+    }
+
+    payload = {
+        "model": settings.openrouter_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            *messages,
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    client = get_http_client()
+    async with client.stream(
+        "POST", OPENROUTER_URL, json=payload, headers=headers
+    ) as resp:
+        if resp.status_code != 200:
+            body = await resp.aread()
+            logger.error("OpenRouter returned %s: %s", resp.status_code, body)
+            raise LLMError(f"LLM service returned {resp.status_code}")
+
+        async for line in resp.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            data_str = line[6:]
+            if data_str.strip() == "[DONE]":
+                break
+            try:
+                chunk = json_mod.loads(data_str)
+                token = chunk["choices"][0]["delta"].get("content")
+                if token:
+                    yield token
+            except (json_mod.JSONDecodeError, KeyError, IndexError):
+                continue

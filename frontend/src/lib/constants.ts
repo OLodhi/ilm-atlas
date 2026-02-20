@@ -41,3 +41,5 @@ export const CHUNK_TYPE_BADGE_VARIANTS: Record<string, string> = {
   tafsir: "bg-violet-50 text-violet-800 border-violet-200",
   paragraph: "bg-slate-50 text-slate-700 border-slate-200",
 };
+
+export const STREAMING_MSG_ID = "__streaming__";

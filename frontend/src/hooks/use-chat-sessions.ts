@@ -43,6 +43,12 @@ export function useChatSessions() {
     );
   }, []);
 
+  const updateTitle = useCallback((id: string, title: string) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, title } : s))
+    );
+  }, []);
+
   return {
     sessions,
     loading,
@@ -50,5 +56,6 @@ export function useChatSessions() {
     create,
     remove,
     rename,
+    updateTitle,
   };
 }
