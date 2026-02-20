@@ -79,7 +79,7 @@ async def keyword_search(
     batch_size = 250
 
     while True:
-        results, next_offset = client.scroll(
+        results, next_offset = await client.scroll(
             collection_name=COLLECTION_NAME,
             scroll_filter=scroll_filter,
             limit=batch_size,
@@ -152,7 +152,7 @@ async def metadata_search(
     batch_size = 250
 
     while True:
-        results, next_offset = client.scroll(
+        results, next_offset = await client.scroll(
             collection_name=COLLECTION_NAME,
             scroll_filter=scroll_filter,
             limit=batch_size,
