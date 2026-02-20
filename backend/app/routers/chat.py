@@ -30,6 +30,7 @@ from app.prompts.adab_chat_system import ADAB_CHAT_SYSTEM_PROMPT
 from app.prompts.query_rewrite import QUERY_REWRITE_SYSTEM_PROMPT
 from app.prompts.session_title import SESSION_TITLE_SYSTEM_PROMPT
 from app.services.llm import LLMError, call_llm, call_llm_chat, stream_llm_chat
+from app.services.auth.usage import check_and_increment_usage
 from app.services.rag import build_numbered_citations, finalize_citations, retrieve_and_format
 
 logger = logging.getLogger(__name__)
@@ -168,6 +169,14 @@ async def send_message(
         .where(ChatSession.id == session_id)
     )
     session = result.scalar_one_or_none()
+
+    # 1b. Check daily usage limit
+    allowed, used, limit = await check_and_increment_usage(user, db)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily query limit reached ({limit}/{limit}). Resets at midnight UTC.",
+        )
 
     # 2. Save user message (capture prior count before flush mutates identity map)
     prior_message_count = len(session.messages)
@@ -367,7 +376,7 @@ async def send_message_stream(
     DB session so the connection stays alive for the full stream lifecycle.
     """
     return StreamingResponse(
-        _stream_response(session_id, body, request, user.id),
+        _stream_response(session_id, body, request, user),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -380,7 +389,7 @@ async def _stream_response(
     session_id: UUID,
     body: ChatSendRequest,
     request: Request,
-    user_id: UUID,
+    user: User,
 ):
     """Async generator that yields SSE events for a chat response."""
     async with async_session() as db:
@@ -392,8 +401,17 @@ async def _stream_response(
                 .where(ChatSession.id == session_id)
             )
             session = result.scalar_one_or_none()
-            if session is None or session.user_id != user_id:
+            if session is None or session.user_id != user.id:
                 yield _sse_event("error", {"detail": "Session not found"})
+                return
+
+            # 0b. Check daily usage limit (merge user into this session for attribute access)
+            local_user = await db.merge(user)
+            allowed, used, limit = await check_and_increment_usage(local_user, db)
+            if not allowed:
+                yield _sse_event("error", {
+                    "detail": f"Daily query limit reached ({limit}/{limit}). Resets at midnight UTC."
+                })
                 return
 
             # 1. Save user message
