@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, type ReactNode } from "react";
+import { useState, useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import { renderTextWithCitations } from "@/lib/markdown-citations";
@@ -18,10 +18,31 @@ interface CitationMarkdownProps {
  */
 export function CitationMarkdown({ content, citations }: CitationMarkdownProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const savedScrollRef = useRef(0);
+  const needsRestoreRef = useRef(false);
 
-  const handleCitationClick = useCallback((index: number) => {
-    setLightboxIndex(index);
+  const saveScrollPos = useCallback(() => {
+    const el = document.querySelector("[data-chat-scroll]") as HTMLElement | null;
+    if (el) savedScrollRef.current = el.scrollTop;
+    needsRestoreRef.current = true;
   }, []);
+
+  // Restore scroll position synchronously after DOM update (before paint)
+  useLayoutEffect(() => {
+    if (needsRestoreRef.current) {
+      needsRestoreRef.current = false;
+      const el = document.querySelector("[data-chat-scroll]") as HTMLElement | null;
+      if (el) el.scrollTop = savedScrollRef.current;
+    }
+  });
+
+  const handleCitationClick = useCallback(
+    (index: number) => {
+      saveScrollPos();
+      setLightboxIndex(index);
+    },
+    [saveScrollPos]
+  );
 
   /**
    * Process children of a markdown element, replacing `[N]` text nodes
@@ -69,7 +90,10 @@ export function CitationMarkdown({ content, citations }: CitationMarkdownProps) 
         index={lightboxIndex ?? 0}
         open={lightboxIndex !== null}
         onOpenChange={(open) => {
-          if (!open) setLightboxIndex(null);
+          if (!open) {
+            saveScrollPos();
+            setLightboxIndex(null);
+          }
         }}
       />
     </>
