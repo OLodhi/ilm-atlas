@@ -167,7 +167,7 @@ async def _vector_search_pipeline(
 
     # Embed original + expanded phrases in one batch
     all_phrases = [question] + expanded_phrases
-    all_vectors = embed_texts(all_phrases)
+    all_vectors = await asyncio.to_thread(embed_texts, all_phrases)
 
     # Auto-scale top_k based on sub-topic count
     effective_top_k = min(max(top_k, len(all_phrases) * 2), 20)
