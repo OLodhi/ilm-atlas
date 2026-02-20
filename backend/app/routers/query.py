@@ -1,10 +1,15 @@
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import get_session
+from app.dependencies import get_optional_user
 from app.middleware.rate_limit import limiter
-from app.models.schemas import QueryRequest, QueryResponse
+from app.models.db import User
+from app.models.schemas import Citation, QueryRequest, QueryResponse
 from app.prompts.adab_system import ADAB_SYSTEM_PROMPT
+from app.services.auth.usage import check_and_increment_usage
 from app.services.llm import LLMError, call_llm
 from app.services.rag import build_numbered_citations, finalize_citations, retrieve_and_format
 
@@ -14,8 +19,22 @@ router = APIRouter(tags=["query"])
 
 @router.post("/query", response_model=QueryResponse)
 @limiter.limit("10/minute")
-async def query(request: Request, body: QueryRequest):
+async def query(
+    request: Request,
+    body: QueryRequest,
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+):
     """Answer a question using RAG: classify → embed → search → LLM → respond."""
+    # If authenticated, check per-user daily limits
+    if user:
+        allowed, used, limit = await check_and_increment_usage(user, session)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily query limit reached ({limit}/{limit}). Resets at midnight UTC.",
+            )
+
     # 1. Retrieve and format sources
     rag_result = await retrieve_and_format(
         question=body.question,
