@@ -21,11 +21,13 @@ from app.models.schemas import (
     RegisterRequest,
     ResetPasswordRequest,
     TokenResponse,
+    UsageResponse,
     UserResponse,
     UserUpdateRequest,
     VerifyEmailRequest,
 )
 from app.services.auth.common_passwords import is_common_password
+from app.services.auth.usage import get_usage
 from app.services.auth.email import send_password_reset_email, send_verification_email
 from app.services.auth.password import hash_password, verify_password
 from app.services.auth.tokens import (
@@ -528,3 +530,19 @@ async def update_me(
     await session.refresh(current_user)
 
     return current_user
+
+
+# ---------------------------------------------------------------------------
+# 11. GET /auth/usage
+# ---------------------------------------------------------------------------
+
+
+@router.get("/usage", response_model=UsageResponse)
+async def get_my_usage(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get current user's daily usage."""
+    used, limit = await get_usage(current_user, session)
+    today = datetime.now(timezone.utc).date().isoformat()
+    return UsageResponse(used=used, limit=limit, date=today)
