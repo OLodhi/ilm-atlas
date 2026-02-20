@@ -1,3 +1,5 @@
+import warnings
+
 from pydantic_settings import BaseSettings
 
 
@@ -42,6 +44,14 @@ class Settings(BaseSettings):
     anonymous_daily_query_limit: int = 10
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if self.jwt_secret_key == "CHANGE-ME-IN-PRODUCTION":
+            warnings.warn(
+                "JWT_SECRET_KEY is using the default value! Change this in production.",
+                stacklevel=2,
+            )
 
 
 settings = Settings()
