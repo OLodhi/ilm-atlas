@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { ChatMessage } from "./chat-message";
-import { STREAMING_MSG_ID } from "@/lib/constants";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 

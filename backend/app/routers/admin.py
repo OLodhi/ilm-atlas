@@ -2,22 +2,38 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_session
-from app.models.db import Book, Source
+from app.dependencies import require_admin
+from app.models.db import Book, Source, User
 from app.models.schemas import BookResponse, SourceResponse, UploadResponse
+from app.middleware.rate_limit import limiter
 from app.services.ingestion import _detect_file_type, run_ingestion
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+MAGIC_BYTES = {
+    "pdf": (b"%PDF",),
+    "png": (b"\x89PNG",),
+    "jpg": (b"\xff\xd8\xff",),
+    "jpeg": (b"\xff\xd8\xff",),
+    "tiff": (b"II\x2a\x00", b"MM\x00\x2a"),
+    "bmp": (b"BM",),
+    "webp": (b"RIFF",),
+}
+
 
 @router.post("/upload", response_model=UploadResponse)
+@limiter.limit("5/minute")
 async def upload_file(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile,
     title: str = Form(...),
@@ -26,6 +42,7 @@ async def upload_file(
     madhab: str = Form("general"),
     category: str = Form("general"),
     chunk_type: str = Form("paragraph"),
+    admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Upload a file for ingestion into the knowledge base.
@@ -35,17 +52,27 @@ async def upload_file(
     # Validate file type
     file_type = _detect_file_type(file.filename)
 
+    # Read content and check size
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB.")
+
+    # Validate magic bytes for binary files
+    if file_type in MAGIC_BYTES:
+        expected = MAGIC_BYTES[file_type]
+        if not any(content.startswith(m) for m in expected):
+            raise HTTPException(status_code=400, detail="File content does not match declared type.")
+
     # Ensure upload directory exists
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save file to disk
+    # Save file to disk (content already read above)
     file_id = str(uuid.uuid4())
     ext = Path(file.filename).suffix
     saved_filename = f"{file_id}{ext}"
     file_path = upload_dir / saved_filename
 
-    content = await file.read()
     file_path.write_bytes(content)
 
     # Create or find book
@@ -103,6 +130,7 @@ async def _run_ingestion_with_session(
 
 @router.get("/sources", response_model=list[SourceResponse])
 async def list_sources(
+    admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """List all uploaded sources and their ingestion status."""
@@ -114,6 +142,7 @@ async def list_sources(
 
 @router.get("/books", response_model=list[BookResponse])
 async def list_books(
+    admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """List all books in the knowledge base."""
