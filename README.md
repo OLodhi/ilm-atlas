@@ -4,8 +4,6 @@
 
 Ilm Atlas uses Retrieval-Augmented Generation (RAG) to answer questions about Islam by searching a curated knowledge base of over 76,000 primary source texts and synthesizing answers with full citations. Every response is traceable back to its original source — no hallucinations, no invented rulings.
 
-![Research Bench — Surah Al-Ikhlaas lookup with Arabic source text](Screenshots/Screenshot%202026-02-17%20181220.png)
-
 ---
 
 ## What It Does
@@ -38,13 +36,12 @@ Every answer is backed by retrieved source texts. Numbered citations like **[1]*
 ### Arabic + English Side by Side
 Source citations display the original Arabic text (in Uthmani script) alongside the English translation. Arabic text renders with proper RTL layout and traditional typography.
 
-![Split-view research bench with Arabic sources](Screenshots/Screenshot%202026-02-17%20180148.png)
-
 ### Intelligent Search
 - **Query classification** — detects whether you're asking a semantic question, counting something, looking up metadata, or requesting a list
 - **Query expansion** — breaks complex questions into sub-topics for broader coverage
 - **Hybrid search** — combines vector similarity with keyword matching for exhaustive results
 - **Category detection** — automatically focuses on Quran, Hadith, or Tafsir based on the question
+- **Auto-translation** — Arabic-only citations are automatically translated to English via the LLM
 
 ### Adab (Etiquette) Layer
 - Proper honorifics throughout: &#xFDFA; for the Prophet, RA for Companions, RH for scholars
@@ -53,14 +50,10 @@ Source citations display the original Arabic text (in Uthmani script) alongside 
 - Maintains the source hierarchy: Quran first, then Hadith
 
 ### Research Bench
-A split-view interface showing the AI answer on the left and the actual source texts on the right. Filter by madhab (Hanafi, Shafi'i, Maliki, Hanbali) or category (Quran, Hadith, Fiqh, Aqeedah).
-
-![Research bench answering a structural question](Screenshots/Screenshot%202026-02-17%20175923.png)
+A split-view interface showing the AI answer on the left and the actual source texts on the right. Filter results by madhab (Hanafi, Shafi'i, Maliki, Hanbali) or category (Quran, Hadith, Fiqh, Aqeedah).
 
 ### Admin Panel
 Upload and manage source texts (PDF, images with OCR, plain text). Track ingestion status and browse the books inventory.
-
-![Admin panel — books inventory](Screenshots/Screenshot%202026-02-17%20183908.png)
 
 ---
 
