@@ -7,12 +7,15 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+
+from app.middleware.rate_limit import limiter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import async_session, get_session
-from app.models.db import ChatMessage, ChatSession
+from app.dependencies import get_current_user
+from app.models.db import ChatMessage, ChatSession, User
 from app.models.schemas import (
     ChatMessageResponse,
     ChatSendRequest,
@@ -27,10 +30,24 @@ from app.prompts.adab_chat_system import ADAB_CHAT_SYSTEM_PROMPT
 from app.prompts.query_rewrite import QUERY_REWRITE_SYSTEM_PROMPT
 from app.prompts.session_title import SESSION_TITLE_SYSTEM_PROMPT
 from app.services.llm import LLMError, call_llm, call_llm_chat, stream_llm_chat
+from app.services.auth.usage import check_and_increment_usage
 from app.services.rag import build_numbered_citations, finalize_citations, retrieve_and_format
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+async def _get_user_session(
+    session_id: UUID, user: User, db: AsyncSession
+) -> ChatSession:
+    """Fetch a chat session and verify ownership."""
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.id == session_id)
+    )
+    chat_session = result.scalar_one_or_none()
+    if chat_session is None or chat_session.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return chat_session
 
 
 # ---------------------------------------------------------------------------
@@ -38,9 +55,12 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 # ---------------------------------------------------------------------------
 
 @router.post("/sessions", response_model=ChatSessionResponse, status_code=201)
-async def create_session(db: AsyncSession = Depends(get_session)):
+async def create_session(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     """Create a new empty chat session."""
-    session = ChatSession()
+    session = ChatSession(user_id=user.id)
     db.add(session)
     await db.commit()
     await db.refresh(session)
@@ -48,10 +68,15 @@ async def create_session(db: AsyncSession = Depends(get_session)):
 
 
 @router.get("/sessions", response_model=ChatSessionListResponse)
-async def list_sessions(db: AsyncSession = Depends(get_session)):
-    """List all chat sessions, most recently updated first."""
+async def list_sessions(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """List all chat sessions for the current user, most recently updated first."""
     result = await db.execute(
-        select(ChatSession).order_by(ChatSession.updated_at.desc())
+        select(ChatSession)
+        .where(ChatSession.user_id == user.id)
+        .order_by(ChatSession.updated_at.desc())
     )
     sessions = result.scalars().all()
     return ChatSessionListResponse(sessions=sessions)
@@ -60,17 +85,19 @@ async def list_sessions(db: AsyncSession = Depends(get_session)):
 @router.get("/sessions/{session_id}", response_model=ChatSessionDetailResponse)
 async def get_session_detail(
     session_id: UUID,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """Get a session with all its messages."""
+    chat_session = await _get_user_session(session_id, user, db)
+
+    # Eagerly load messages
     result = await db.execute(
         select(ChatSession)
         .options(selectinload(ChatSession.messages))
-        .where(ChatSession.id == session_id)
+        .where(ChatSession.id == chat_session.id)
     )
     session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
 
     return ChatSessionDetailResponse(
         id=session.id,
@@ -93,15 +120,11 @@ async def get_session_detail(
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(
     session_id: UUID,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """Delete a session and all its messages."""
-    result = await db.execute(
-        select(ChatSession).where(ChatSession.id == session_id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    session = await _get_user_session(session_id, user, db)
     await db.delete(session)
     await db.commit()
 
@@ -110,15 +133,11 @@ async def delete_session(
 async def rename_session(
     session_id: UUID,
     body: ChatSessionRenameRequest,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """Rename a session."""
-    result = await db.execute(
-        select(ChatSession).where(ChatSession.id == session_id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    session = await _get_user_session(session_id, user, db)
     session.title = body.title
     await db.commit()
     await db.refresh(session)
@@ -133,21 +152,31 @@ async def rename_session(
     "/sessions/{session_id}/messages",
     response_model=ChatSendResponse,
 )
+@limiter.limit("30/minute")
 async def send_message(
+    request: Request,
     session_id: UUID,
     body: ChatSendRequest,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """Send a user message → RAG → LLM → return assistant response."""
-    # 1. Validate session
+    # 1. Validate session and ownership
+    await _get_user_session(session_id, user, db)
     result = await db.execute(
         select(ChatSession)
         .options(selectinload(ChatSession.messages))
         .where(ChatSession.id == session_id)
     )
     session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+
+    # 1b. Check daily usage limit
+    allowed, used, limit = await check_and_increment_usage(user, db)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily query limit reached ({limit}/{limit}). Resets at midnight UTC.",
+        )
 
     # 2. Save user message (capture prior count before flush mutates identity map)
     prior_message_count = len(session.messages)
@@ -332,10 +361,12 @@ def _sse_event(event: str, data: dict) -> str:
 
 
 @router.post("/sessions/{session_id}/messages/stream")
+@limiter.limit("30/minute")
 async def send_message_stream(
     session_id: UUID,
     body: ChatSendRequest,
     request: Request,
+    user: User = Depends(get_current_user),
 ):
     """Send a user message and stream the assistant response via SSE.
 
@@ -345,7 +376,7 @@ async def send_message_stream(
     DB session so the connection stays alive for the full stream lifecycle.
     """
     return StreamingResponse(
-        _stream_response(session_id, body, request),
+        _stream_response(session_id, body, request, user),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -358,19 +389,29 @@ async def _stream_response(
     session_id: UUID,
     body: ChatSendRequest,
     request: Request,
+    user: User,
 ):
     """Async generator that yields SSE events for a chat response."""
     async with async_session() as db:
         try:
-            # 0. Validate session
+            # 0. Validate session and ownership
             result = await db.execute(
                 select(ChatSession)
                 .options(selectinload(ChatSession.messages))
                 .where(ChatSession.id == session_id)
             )
             session = result.scalar_one_or_none()
-            if not session:
+            if session is None or session.user_id != user.id:
                 yield _sse_event("error", {"detail": "Session not found"})
+                return
+
+            # 0b. Check daily usage limit (merge user into this session for attribute access)
+            local_user = await db.merge(user)
+            allowed, used, limit = await check_and_increment_usage(local_user, db)
+            if not allowed:
+                yield _sse_event("error", {
+                    "detail": f"Daily query limit reached ({limit}/{limit}). Resets at midnight UTC."
+                })
                 return
 
             # 1. Save user message

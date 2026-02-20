@@ -45,7 +45,7 @@ backend/alembic/versions/__pycache__/
 # Surya / model caches
 *.onnx
 *.bin
-models/
+/models/
 
 # Project docs (local only)
 Roadmap/
