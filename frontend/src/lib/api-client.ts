@@ -249,7 +249,7 @@ export async function deleteAccount(): Promise<void> {
 // --- Query ---
 
 export async function postQuery(req: QueryRequest): Promise<QueryResponse> {
-  return apiFetch<QueryResponse>("/query", {
+  return authFetch<QueryResponse>("/query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
