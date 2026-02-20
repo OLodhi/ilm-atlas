@@ -19,7 +19,7 @@ async def check_and_increment_usage(
         select(UsageLog).where(
             UsageLog.user_id == user.id,
             UsageLog.date == today,
-        )
+        ).with_for_update()
     )
     usage = result.scalar_one_or_none()
 
