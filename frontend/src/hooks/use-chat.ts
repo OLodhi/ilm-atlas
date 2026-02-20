@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { getChatSession, sendChatMessage } from "@/lib/api-client";
-import type { ChatMessage, ChatSessionDetail, Citation } from "@/lib/types";
+import type { ChatMessage, ChatSessionDetail } from "@/lib/types";
 
 // Module-level map of in-flight send requests per session.
 // Survives component unmounts so navigating away doesn't lose the request.
@@ -18,13 +18,9 @@ export function useChat(sessionId: string) {
   const [error, setError] = useState<string | null>(null);
   const [madhab, setMadhab] = useState("all");
   const [category, setCategory] = useState("all");
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
-    null
-  );
 
   const loadSession = useCallback(async () => {
     setError(null);
-    setSelectedMessageId(null);
 
     // If there's an in-flight send for this session, show existing messages
     // plus the optimistic user message while we wait for the response.
@@ -53,13 +49,6 @@ export function useChat(sessionId: string) {
     try {
       const data = await getChatSession(sessionId);
       setSession(data);
-      // Auto-select the last assistant message
-      const lastAssistant = [...data.messages]
-        .reverse()
-        .find((m) => m.role === "assistant");
-      if (lastAssistant) {
-        setSelectedMessageId(lastAssistant.id);
-      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load session"
@@ -110,7 +99,6 @@ export function useChat(sessionId: string) {
               messages: [...messages, result.user_message, result.message],
             };
           });
-          setSelectedMessageId(result.message.id);
         } catch (err) {
           setError(
             err instanceof Error ? err.message : "Failed to send message"
@@ -148,17 +136,6 @@ export function useChat(sessionId: string) {
     [sessionId, sending, madhab, category]
   );
 
-  // Get citations for the selected (or latest) assistant message
-  const activeCitations: Citation[] = (() => {
-    if (!session) return [];
-    const targetId =
-      selectedMessageId ??
-      [...session.messages].reverse().find((m) => m.role === "assistant")?.id;
-    if (!targetId) return [];
-    const msg = session.messages.find((m) => m.id === targetId);
-    return msg?.citations ?? [];
-  })();
-
   return {
     session,
     sending,
@@ -167,10 +144,7 @@ export function useChat(sessionId: string) {
     setMadhab,
     category,
     setCategory,
-    selectedMessageId,
-    setSelectedMessageId,
     loadSession,
     sendMessage,
-    activeCitations,
   };
 }

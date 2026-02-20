@@ -46,7 +46,7 @@ export interface Citation {
   text_arabic: string | null;
   text_english: string | null;
   source: string;
-  chunk_type: "ayah" | "hadith" | "paragraph";
+  chunk_type: "ayah" | "hadith" | "tafsir" | "paragraph";
   metadata: Record<string, unknown> | null;
   auto_translated?: boolean;
 }

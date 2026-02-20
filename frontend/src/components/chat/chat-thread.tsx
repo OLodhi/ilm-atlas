@@ -8,17 +8,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface ChatThreadProps {
   messages: ChatMessageType[];
-  selectedMessageId: string | null;
-  onSelectMessage: (id: string) => void;
   sending: boolean;
 }
 
-export function ChatThread({
-  messages,
-  selectedMessageId,
-  onSelectMessage,
-  sending,
-}: ChatThreadProps) {
+export function ChatThread({ messages, sending }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages
@@ -45,12 +38,7 @@ export function ChatThread({
     <ScrollArea className="h-full">
       <div className="mx-auto max-w-3xl space-y-4 p-4 pb-6">
         {messages.map((msg) => (
-          <ChatMessage
-            key={msg.id}
-            message={msg}
-            isSelected={msg.id === selectedMessageId}
-            onSelect={() => onSelectMessage(msg.id)}
-          />
+          <ChatMessage key={msg.id} message={msg} />
         ))}
         {sending && (
           <div className="flex justify-start">
