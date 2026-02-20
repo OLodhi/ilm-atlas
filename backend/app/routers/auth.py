@@ -43,14 +43,20 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 REFRESH_COOKIE_NAME = "refresh_token"
 
 
+def _is_production() -> bool:
+    """Check if running in production (frontend served over HTTPS)."""
+    return settings.frontend_url.startswith("https")
+
+
 def _set_refresh_cookie(response: Response, raw_token: str) -> None:
     """Set the refresh token as an httpOnly secure cookie."""
+    is_prod = _is_production()
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
         value=raw_token,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=is_prod,
+        samesite="strict" if is_prod else "lax",
         path="/auth",
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
     )
@@ -58,11 +64,12 @@ def _set_refresh_cookie(response: Response, raw_token: str) -> None:
 
 def _delete_refresh_cookie(response: Response) -> None:
     """Delete the refresh token cookie."""
+    is_prod = _is_production()
     response.delete_cookie(
         key=REFRESH_COOKIE_NAME,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=is_prod,
+        samesite="strict" if is_prod else "lax",
         path="/auth",
     )
 
@@ -593,5 +600,5 @@ async def delete_account(
         token.revoked_at = datetime.now(timezone.utc)
 
     await session.commit()
-    response.delete_cookie(REFRESH_COOKIE_NAME, path="/auth")
+    _delete_refresh_cookie(response)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
