@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_session
-from app.models.db import Book, Source
+from app.dependencies import require_admin
+from app.models.db import Book, Source, User
 from app.models.schemas import BookResponse, SourceResponse, UploadResponse
 from app.middleware.rate_limit import limiter
 from app.services.ingestion import _detect_file_type, run_ingestion
@@ -41,6 +42,7 @@ async def upload_file(
     madhab: str = Form("general"),
     category: str = Form("general"),
     chunk_type: str = Form("paragraph"),
+    admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Upload a file for ingestion into the knowledge base.
@@ -128,6 +130,7 @@ async def _run_ingestion_with_session(
 
 @router.get("/sources", response_model=list[SourceResponse])
 async def list_sources(
+    admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """List all uploaded sources and their ingestion status."""
@@ -139,6 +142,7 @@ async def list_sources(
 
 @router.get("/books", response_model=list[BookResponse])
 async def list_books(
+    admin: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """List all books in the knowledge base."""
