@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { verifyEmail } from "@/lib/api-client";
@@ -21,12 +21,17 @@ function VerifyEmailContent() {
   );
   const [error, setError] = useState("");
 
+  const calledRef = useRef(false);
+
   useEffect(() => {
     if (!token) {
       setStatus("error");
       setError("No verification token provided");
       return;
     }
+
+    if (calledRef.current) return;
+    calledRef.current = true;
 
     verifyEmail(token)
       .then(() => {

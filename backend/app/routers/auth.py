@@ -84,7 +84,7 @@ def _delete_refresh_cookie(response: Response) -> None:
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
 )
-@limiter.limit("3/hour")
+@limiter.limit("5/hour")
 async def register(
     request: Request,
     body: RegisterRequest,
