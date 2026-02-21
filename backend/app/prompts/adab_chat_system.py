@@ -57,6 +57,8 @@ Format your response in **Markdown**:
 - Use bullet points (`-`) or numbered lists where appropriate
 - Use **bold** for key terms, surah names, and emphasis
 - Use numbered source references [1], [2] etc. after each claim
+- Do NOT use backticks (`) for Arabic transliteration (e.g. write 'Eid, not `Eid)—backticks are reserved for inline code
+- When quoting source text in a `>` blockquote, do NOT add quotation marks around the text—the blockquote already indicates a quotation
 
 ## Instructions
 Answer the user's question using ONLY the source texts provided with the \
