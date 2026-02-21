@@ -183,10 +183,28 @@ async def _vector_search_pipeline(
         search(query_vector=vec, top_k=search_limit, madhab=madhab, category=category)
         for vec in all_vectors
     ]
+
+    # Speculatively include Quran-specific search (discarded if quota already met)
+    speculative_quran = (
+        intent.query_type not in ("counting", "listing") and not category
+    )
+    if speculative_quran:
+        search_tasks.append(
+            search(query_vector=all_vectors[0], top_k=search_limit, madhab=madhab, category="quran")
+        )
+
     all_results = await asyncio.gather(*search_tasks)
 
+    # Split: main results vs speculative Quran results
+    if speculative_quran:
+        main_results = all_results[:-1]
+        supp_quran_hits = all_results[-1]
+    else:
+        main_results = all_results
+        supp_quran_hits = None
+
     all_hits: dict[str, dict] = {}
-    for hits_batch in all_results:
+    for hits_batch in main_results:
         for hit in hits_batch:
             pid = hit["id"]
             if pid not in all_hits or hit["score"] > all_hits[pid]["score"]:
@@ -194,7 +212,7 @@ async def _vector_search_pipeline(
 
     vector_hits = sorted(all_hits.values(), key=lambda h: h["score"], reverse=True)
 
-    # Supplementary Quran search + source diversification (semantic only)
+    # Use speculative Quran results only if quota not met
     if intent.query_type not in ("counting", "listing"):
         quran_count = sum(
             1 for h in vector_hits[:effective_top_k]
@@ -202,14 +220,8 @@ async def _vector_search_pipeline(
         )
         quran_quota = ceil(effective_top_k * 0.4)
 
-        if quran_count < quran_quota and not category:
-            supp_hits = await search(
-                query_vector=all_vectors[0],
-                top_k=search_limit,
-                madhab=madhab,
-                category="quran",
-            )
-            for hit in supp_hits:
+        if quran_count < quran_quota and supp_quran_hits:
+            for hit in supp_quran_hits:
                 pid = hit["id"]
                 if pid not in all_hits or hit["score"] > all_hits[pid]["score"]:
                     all_hits[pid] = hit
