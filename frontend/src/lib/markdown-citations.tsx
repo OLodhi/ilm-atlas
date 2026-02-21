@@ -46,12 +46,12 @@ export function CitationLink({ citation, onClick }: CitationLinkProps) {
   );
 }
 
-const CITATION_RE = /\[(\d+)\]/g;
+const CITATION_RE = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
 
 /**
- * Scan a string for `[N]` patterns and return an array of ReactNodes where
- * valid citation references are replaced with `CitationLink` components
- * showing the source name.
+ * Scan a string for `[N]` and `[N, N, ...]` patterns and return an array of
+ * ReactNodes where valid citation references are replaced with `CitationLink`
+ * components showing the source name.
  */
 export function renderTextWithCitations(
   text: string,
@@ -66,21 +66,32 @@ export function renderTextWithCitations(
   CITATION_RE.lastIndex = 0;
 
   while ((match = CITATION_RE.exec(text)) !== null) {
-    const num = parseInt(match[1], 10);
-
     // Push text before the match
     if (match.index > lastIndex) {
       nodes.push(text.slice(lastIndex, match.index));
     }
 
-    if (num >= 1 && num <= citations.length) {
-      nodes.push(
-        <CitationLink
-          key={`cit-${match.index}`}
-          citation={citations[num - 1]}
-          onClick={() => onClick(num)}
-        />
-      );
+    const nums = match[1].split(",").map((s) => parseInt(s.trim(), 10));
+    let allValid = true;
+
+    for (const num of nums) {
+      if (num < 1 || num > citations.length) {
+        allValid = false;
+        break;
+      }
+    }
+
+    if (allValid) {
+      for (let i = 0; i < nums.length; i++) {
+        const num = nums[i];
+        nodes.push(
+          <CitationLink
+            key={`cit-${match.index}-${num}`}
+            citation={citations[num - 1]}
+            onClick={() => onClick(num)}
+          />
+        );
+      }
     } else {
       // Invalid reference — keep as plain text
       nodes.push(match[0]);
