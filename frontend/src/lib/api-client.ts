@@ -18,6 +18,7 @@ import type {
   SSEDoneEvent,
   SSEErrorEvent,
 } from "./types";
+import { ApiError } from "./api-errors";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -81,8 +82,14 @@ async function apiFetch<T>(
     },
   });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
+    let detail: string;
+    try {
+      const body = await res.json();
+      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body);
+    } catch {
+      detail = `Request failed (${res.status})`;
+    }
+    throw new ApiError(res.status, detail);
   }
   if (res.status === 204) {
     return undefined as T;
@@ -131,7 +138,7 @@ async function authFetch<T>(
     });
   } catch (err) {
     // Intercept 401 errors — try refreshing the token and retry once
-    if (err instanceof Error && err.message.startsWith("API error 401:")) {
+    if (err instanceof ApiError && err.status === 401) {
       try {
         await ensureValidToken();
         return await apiFetch<T>(path, {
@@ -382,8 +389,14 @@ export async function streamChatMessage(
   );
 
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API error ${res.status}: ${body}`);
+    let detail: string;
+    try {
+      const body = await res.json();
+      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body);
+    } catch {
+      detail = `Request failed (${res.status})`;
+    }
+    throw new ApiError(res.status, detail);
   }
 
   const reader = res.body!.getReader();

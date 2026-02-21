@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchBooks } from "@/lib/api-client";
+import { parseApiError } from "@/lib/api-errors";
 import type { BookResponse } from "@/lib/types";
 
 export function useAdminBooks() {
@@ -15,9 +16,7 @@ export function useAdminBooks() {
       setBooks(data);
       setError(null);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load books"
-      );
+      setError(parseApiError(err));
     } finally {
       setLoading(false);
     }

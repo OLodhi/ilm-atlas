@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { getChatSession, streamChatMessage } from "@/lib/api-client";
+import { parseApiError } from "@/lib/api-errors";
 import { STREAMING_MSG_ID } from "@/lib/constants";
 import type { ChatMessage, ChatSessionDetail } from "@/lib/types";
 
@@ -83,9 +84,7 @@ export function useChat(sessionId: string) {
       const data = await getChatSession(sessionId);
       setSession(data);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load session"
-      );
+      setError(parseApiError(err));
     }
   }, [sessionId]);
 
@@ -221,9 +220,7 @@ export function useChat(sessionId: string) {
             }
           );
         } catch (err) {
-          setError(
-            err instanceof Error ? err.message : "Failed to send message"
-          );
+          setError(parseApiError(err));
           // Remove optimistic user message on failure
           setSession((prev) =>
             prev

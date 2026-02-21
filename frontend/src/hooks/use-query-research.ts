@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { postQuery } from "@/lib/api-client";
+import { parseApiError } from "@/lib/api-errors";
 import type { QueryResponse } from "@/lib/types";
 
 export function useQueryResearch() {
@@ -27,9 +28,7 @@ export function useQueryResearch() {
       });
       setResponse(result);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to get response"
-      );
+      setError(parseApiError(err));
     } finally {
       setLoading(false);
     }
