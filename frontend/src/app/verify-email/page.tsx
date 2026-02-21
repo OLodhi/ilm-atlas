@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { verifyEmail } from "@/lib/api-client";
+import { parseApiError } from "@/lib/api-errors";
 import {
   Card,
   CardContent,
@@ -39,9 +40,7 @@ function VerifyEmailContent() {
       })
       .catch((err) => {
         setStatus("error");
-        setError(
-          err instanceof Error ? err.message : "Verification failed"
-        );
+        setError(parseApiError(err));
       });
   }, [token]);
 

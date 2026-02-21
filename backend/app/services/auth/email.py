@@ -4,6 +4,7 @@ import logging
 import resend
 
 from app.config import settings
+from app.services.auth.email_templates import password_reset_email, verification_email
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +25,7 @@ async def send_verification_email(to_email: str, token: str, display_name: str |
             "from": settings.email_from,
             "to": [to_email],
             "subject": "Verify your Ilm Atlas account",
-            "html": f"""
-                <h2>Assalamu Alaikum {name},</h2>
-                <p>Welcome to Ilm Atlas! Please verify your email address by clicking the link below:</p>
-                <p><a href="{verify_url}">Verify Email Address</a></p>
-                <p>This link expires in {settings.email_verification_expire_hours} hours.</p>
-                <p>If you didn't create an account, you can safely ignore this email.</p>
-                <br>
-                <p>Ilm Atlas Team</p>
-            """,
+            "html": verification_email(name, verify_url, settings.email_verification_expire_hours),
         })
         return True
     except Exception:
@@ -51,15 +44,7 @@ async def send_password_reset_email(to_email: str, token: str, display_name: str
             "from": settings.email_from,
             "to": [to_email],
             "subject": "Reset your Ilm Atlas password",
-            "html": f"""
-                <h2>Assalamu Alaikum {name},</h2>
-                <p>We received a request to reset your password. Click the link below:</p>
-                <p><a href="{reset_url}">Reset Password</a></p>
-                <p>This link expires in {settings.password_reset_expire_hours} hour(s).</p>
-                <p>If you didn't request this, you can safely ignore this email.</p>
-                <br>
-                <p>Ilm Atlas Team</p>
-            """,
+            "html": password_reset_email(name, reset_url, settings.password_reset_expire_hours),
         })
         return True
     except Exception:

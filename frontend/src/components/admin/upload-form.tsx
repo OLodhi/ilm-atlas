@@ -18,6 +18,7 @@ import {
   CHUNK_TYPE_OPTIONS,
 } from "@/lib/constants";
 import { uploadFile } from "@/lib/api-client";
+import { parseApiError } from "@/lib/api-errors";
 import { Upload, Loader2 } from "lucide-react";
 
 interface UploadFormProps {
@@ -61,9 +62,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       if (fileRef.current) fileRef.current.value = "";
       onUploaded();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Upload failed"
-      );
+      setError(parseApiError(err));
     } finally {
       setLoading(false);
     }

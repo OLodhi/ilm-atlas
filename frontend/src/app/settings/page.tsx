@@ -11,6 +11,7 @@ import {
   deleteAccount,
   type UsageInfo,
 } from "@/lib/api-client";
+import { parseApiError } from "@/lib/api-errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -91,9 +92,7 @@ function SettingsContent() {
       await refreshUser();
       setProfileMsg("Display name updated.");
     } catch (err) {
-      setProfileErr(
-        err instanceof Error ? err.message : "Failed to update profile"
-      );
+      setProfileErr(parseApiError(err));
     } finally {
       setProfileSaving(false);
     }
@@ -107,9 +106,7 @@ function SettingsContent() {
       const result = await resendVerification();
       setEmailMsg(result.message || "Verification email sent.");
     } catch (err) {
-      setEmailErr(
-        err instanceof Error ? err.message : "Failed to send verification email"
-      );
+      setEmailErr(parseApiError(err));
     } finally {
       setEmailSending(false);
     }
@@ -140,9 +137,7 @@ function SettingsContent() {
       setConfirmPassword("");
       setPasswordMsg("Password updated successfully.");
     } catch (err) {
-      setPasswordErr(
-        err instanceof Error ? err.message : "Failed to update password"
-      );
+      setPasswordErr(parseApiError(err));
     } finally {
       setPasswordSaving(false);
     }
@@ -155,9 +150,7 @@ function SettingsContent() {
       await deleteAccount();
       router.push("/");
     } catch (err) {
-      setDeleteErr(
-        err instanceof Error ? err.message : "Failed to delete account"
-      );
+      setDeleteErr(parseApiError(err));
       setDeleting(false);
     }
   }

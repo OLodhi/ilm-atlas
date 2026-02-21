@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchSources } from "@/lib/api-client";
+import { parseApiError } from "@/lib/api-errors";
 import type { SourceResponse } from "@/lib/types";
 
 export function useAdminSources() {
@@ -16,9 +17,7 @@ export function useAdminSources() {
       setSources(data);
       setError(null);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load sources"
-      );
+      setError(parseApiError(err));
     } finally {
       setLoading(false);
     }
