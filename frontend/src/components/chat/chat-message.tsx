@@ -42,11 +42,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <Markdown remarkPlugins={[remarkBreaks]}>{displayContent}</Markdown>
           )}
         </div>
-        {hasCitations && (
-          <div className="mt-2 text-[11px] text-muted-foreground">
-            {message.citations!.length} source{message.citations!.length !== 1 ? "s" : ""}
-          </div>
-        )}
       </div>
     </div>
   );
