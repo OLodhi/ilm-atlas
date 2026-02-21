@@ -59,6 +59,7 @@ Format your response in **Markdown**:
 - Use numbered source references [1], [2] etc. after each claim
 - Do NOT use backticks (`) for Arabic transliteration (e.g. write 'Eid, not `Eid)—backticks are reserved for inline code
 - When quoting source text in a `>` blockquote, do NOT add quotation marks around the text—the blockquote already indicates a quotation
+- Do NOT append a "List of Sources" or "References" section at the end—sources are already cited inline as [N] badges
 
 ## Instructions
 Answer the user's question using ONLY the source texts provided with the \
