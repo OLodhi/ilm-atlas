@@ -1,3 +1,4 @@
+import asyncio
 import json as json_mod
 import logging
 from collections.abc import AsyncIterator
@@ -5,6 +6,7 @@ from collections.abc import AsyncIterator
 import httpx
 
 from app.config import settings
+from app.services.token_budget import estimate_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +81,9 @@ async def call_llm(
 
 def _trim_history(
     messages: list[dict[str, str]],
-    max_chars: int = 80_000,
+    max_tokens: int = 40_000,
 ) -> list[dict[str, str]]:
-    """Keep the most recent messages within a character budget.
+    """Keep the most recent messages within a token budget.
 
     Always keeps the last message (current turn). Walks backward from
     the end, dropping older messages first when the budget is exceeded.
@@ -90,20 +92,20 @@ def _trim_history(
         return messages
 
     # Always keep the last message
-    total = len(messages[-1].get("content", ""))
+    total = estimate_tokens(messages[-1].get("content", ""))
     keep_from = len(messages) - 1
 
     for i in range(len(messages) - 2, -1, -1):
-        msg_len = len(messages[i].get("content", ""))
-        if total + msg_len > max_chars:
+        msg_tokens = estimate_tokens(messages[i].get("content", ""))
+        if total + msg_tokens > max_tokens:
             break
-        total += msg_len
+        total += msg_tokens
         keep_from = i
 
     trimmed = messages[keep_from:]
     if len(trimmed) < len(messages):
         logger.info(
-            "History trimmed: %d → %d messages (~%d chars)",
+            "History trimmed: %d → %d messages (~%d tokens)",
             len(messages), len(trimmed), total,
         )
     return trimmed
@@ -208,3 +210,72 @@ async def stream_llm_chat(
                     yield token
             except (json_mod.JSONDecodeError, KeyError, IndexError):
                 continue
+
+
+async def stream_llm_chunked_synthesis(
+    system_prompt: str,
+    source_chunks: list[str],
+    question: str,
+    query_context: str,
+    history: list[dict[str, str]],
+    temperature: float = 0.3,
+) -> AsyncIterator[str]:
+    """Tier 3: parallel chunk analysis followed by streamed synthesis.
+
+    1. Makes parallel non-streaming LLM calls, one per source chunk.
+    2. Collects the partial answers.
+    3. Streams a final synthesis call that merges them.
+
+    Yields tokens from the synthesis call only.
+    """
+    # Phase 1: parallel chunk analysis
+    async def _analyze_chunk(chunk_text: str, chunk_num: int) -> str:
+        user_content = (
+            f"## Source Texts (Part {chunk_num}/{len(source_chunks)})\n"
+            f"{chunk_text}\n\n"
+            f"## User Question\n{question}\n\n"
+            f"{query_context}\n\n"
+            "Provide a thorough partial answer based ONLY on the sources above. "
+            "CRITICAL: Every claim MUST be cited by its source number in square "
+            "brackets, like [1], [42], [103]. The numbers correspond to the "
+            "[Source N] blocks above. NEVER cite by source title or book name — "
+            "ONLY use bracketed numbers. "
+            "This is part of a multi-part analysis — cover what these sources contain."
+        )
+        messages = history + [{"role": "user", "content": user_content}]
+        return await call_llm_chat(
+            system_prompt=system_prompt,
+            messages=messages,
+            max_tokens=4_000,
+            temperature=temperature,
+        )
+
+    logger.info("Tier 3 chunked synthesis: %d chunks", len(source_chunks))
+    partial_answers = await asyncio.gather(
+        *[_analyze_chunk(chunk, i + 1) for i, chunk in enumerate(source_chunks)]
+    )
+
+    # Phase 2: synthesis call (streamed)
+    parts_text = "\n\n---\n\n".join(
+        f"## Partial Answer {i + 1}\n{answer}"
+        for i, answer in enumerate(partial_answers)
+    )
+    synthesis_content = (
+        f"The user asked: {question}\n\n"
+        f"The following partial answers were generated from different sets of sources. "
+        f"Synthesize them into a single, coherent, well-structured response. "
+        f"Preserve all bracketed citation numbers exactly as they appear "
+        f"(e.g. [1], [42], [103]). Do NOT replace them with source titles "
+        f"or book names, and do NOT add the word 'Source' before the number. "
+        f"Remove redundancy and organize by theme.\n\n"
+        f"{parts_text}"
+    )
+    synthesis_messages = history + [{"role": "user", "content": synthesis_content}]
+
+    async for token in stream_llm_chat(
+        system_prompt=system_prompt,
+        messages=synthesis_messages,
+        max_tokens=8_000,
+        temperature=temperature,
+    ):
+        yield token

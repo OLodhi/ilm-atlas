@@ -29,9 +29,10 @@ from app.models.schemas import (
 from app.prompts.adab_chat_system import ADAB_CHAT_SYSTEM_PROMPT
 from app.prompts.query_rewrite import QUERY_REWRITE_SYSTEM_PROMPT
 from app.prompts.session_title import SESSION_TITLE_SYSTEM_PROMPT
-from app.services.llm import LLMError, call_llm, call_llm_chat, stream_llm_chat
+from app.services.llm import LLMError, call_llm, call_llm_chat, stream_llm_chat, stream_llm_chunked_synthesis
 from app.services.auth.usage import check_and_increment_usage
-from app.services.rag import build_numbered_citations, finalize_citations, retrieve_and_format
+from app.services.rag import build_numbered_citations, build_sources_tiered, finalize_citations, retrieve_and_format, split_sources_text_into_chunks
+from app.services.token_budget import available_source_tokens
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -210,35 +211,77 @@ async def send_message(
         category=body.category,
     )
 
-    # 6. Build source-augmented current turn
+    # 6. Build source-augmented current turn with tiered auto-scaling
+    llm_failed = False
     if rag_result:
-        current_user_content = (
-            f"## Source Texts\n{rag_result.sources_text}\n\n"
-            f"## User Question\n{body.message}\n\n"
-            f"{rag_result.query_context}"
+        source_budget = available_source_tokens(
+            system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
+            history=history_messages,
+            question=body.message,
+            context=rag_result.query_context,
         )
+        sources_text, query_context, tier = build_sources_tiered(
+            rag_result.hits, rag_result.intent, 10, source_budget,
+        )
+
+        if tier in ("full", "english_only"):
+            current_user_content = (
+                f"## Source Texts\n{sources_text}\n\n"
+                f"## User Question\n{body.message}\n\n"
+                f"{query_context}"
+            )
+            llm_messages = history_messages + [
+                {"role": "user", "content": current_user_content},
+            ]
+            try:
+                answer = await call_llm_chat(
+                    system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
+                    messages=llm_messages,
+                )
+            except LLMError as exc:
+                logger.error("LLM call failed: %s", exc)
+                llm_failed = True
+                answer = (
+                    "I'm sorry, the AI service is temporarily unavailable. "
+                    "Please try again in a moment."
+                )
+        else:
+            # Tier 3: chunked synthesis (sources_text has global numbering)
+            chunk_texts = split_sources_text_into_chunks(sources_text, source_budget)
+            try:
+                answer = ""
+                async for token in stream_llm_chunked_synthesis(
+                    system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
+                    source_chunks=chunk_texts,
+                    question=body.message,
+                    query_context=query_context,
+                    history=history_messages,
+                ):
+                    answer += token
+            except LLMError as exc:
+                logger.error("Chunked synthesis failed: %s", exc)
+                llm_failed = True
+                answer = (
+                    "I'm sorry, the AI service is temporarily unavailable. "
+                    "Please try again in a moment."
+                )
     else:
         current_user_content = body.message
-
-    # 7. Build LLM messages: history (raw text) + current turn (with sources)
-    llm_messages = history_messages + [
-        {"role": "user", "content": current_user_content},
-    ]
-
-    # 8. Call LLM
-    llm_failed = False
-    try:
-        answer = await call_llm_chat(
-            system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
-            messages=llm_messages,
-        )
-    except LLMError as exc:
-        logger.error("LLM call failed: %s", exc)
-        llm_failed = True
-        answer = (
-            "I'm sorry, the AI service is temporarily unavailable. "
-            "Please try again in a moment."
-        )
+        llm_messages = history_messages + [
+            {"role": "user", "content": current_user_content},
+        ]
+        try:
+            answer = await call_llm_chat(
+                system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
+                messages=llm_messages,
+            )
+        except LLMError as exc:
+            logger.error("LLM call failed: %s", exc)
+            llm_failed = True
+            answer = (
+                "I'm sorry, the AI service is temporarily unavailable. "
+                "Please try again in a moment."
+            )
 
     # 9. Build citations + auto-title (parallel when both needed)
     # Skip citations when the LLM failed — no [N] markers in the error message.
@@ -453,15 +496,27 @@ async def _stream_response(
                 category=body.category,
             )
 
-            # 5. Build LLM messages
+            # 5. Build LLM messages with tiered auto-scaling
+            tier = "full"
+            source_budget = 0
             if rag_result:
+                source_budget = available_source_tokens(
+                    system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
+                    history=history_messages,
+                    question=body.message,
+                    context=rag_result.query_context,
+                )
+                sources_text, query_context, tier = build_sources_tiered(
+                    rag_result.hits, rag_result.intent, 10, source_budget,
+                )
                 current_user_content = (
-                    f"## Source Texts\n{rag_result.sources_text}\n\n"
+                    f"## Source Texts\n{sources_text}\n\n"
                     f"## User Question\n{body.message}\n\n"
-                    f"{rag_result.query_context}"
+                    f"{query_context}"
                 )
             else:
                 current_user_content = body.message
+                query_context = ""
 
             llm_messages = history_messages + [
                 {"role": "user", "content": current_user_content},
@@ -477,10 +532,23 @@ async def _stream_response(
             full_answer = ""
             llm_failed = False
             try:
-                async for token in stream_llm_chat(
-                    system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
-                    messages=llm_messages,
-                ):
+                if tier == "chunked" and rag_result:
+                    # Tier 3: chunked synthesis (sources_text has global numbering)
+                    chunk_texts = split_sources_text_into_chunks(sources_text, source_budget)
+                    token_stream = stream_llm_chunked_synthesis(
+                        system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
+                        source_chunks=chunk_texts,
+                        question=body.message,
+                        query_context=query_context,
+                        history=history_messages,
+                    )
+                else:
+                    token_stream = stream_llm_chat(
+                        system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
+                        messages=llm_messages,
+                    )
+
+                async for token in token_stream:
                     full_answer += token
                     yield _sse_event("content_delta", {"token": token})
                     if await request.is_disconnected():
