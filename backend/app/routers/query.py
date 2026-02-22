@@ -8,10 +8,12 @@ from app.dependencies import get_optional_user
 from app.middleware.rate_limit import limiter
 from app.models.db import User
 from app.models.schemas import Citation, QueryRequest, QueryResponse
+from app.prompts.adab_chat_system import ADAB_CHAT_SYSTEM_PROMPT
 from app.prompts.adab_system import ADAB_SYSTEM_PROMPT
 from app.services.auth.usage import check_and_increment_usage
-from app.services.llm import LLMError, call_llm
-from app.services.rag import build_numbered_citations, finalize_citations, retrieve_and_format
+from app.services.llm import LLMError, call_llm, stream_llm_chunked_synthesis
+from app.services.rag import build_numbered_citations, build_sources_tiered, finalize_citations, retrieve_and_format, split_sources_text_into_chunks
+from app.services.token_budget import available_source_tokens
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["query"])
@@ -50,24 +52,53 @@ async def query(
             citations=[],
         )
 
-    # 2. Build LLM prompt
-    prompt = ADAB_SYSTEM_PROMPT.format(
-        sources=rag_result.sources_text,
+    # 2. Build LLM prompt with tiered auto-scaling
+    source_budget = available_source_tokens(
+        system_prompt=ADAB_SYSTEM_PROMPT,
+        history=[],
         question=body.question,
-        query_context=rag_result.query_context,
+    )
+    sources_text, query_context, tier = build_sources_tiered(
+        rag_result.hits, rag_result.intent, body.top_k, source_budget,
     )
 
     # 3. Call LLM
     llm_failed = False
-    try:
-        answer = await call_llm(system_prompt=prompt, user_message=body.question)
-    except LLMError as exc:
-        logger.error("LLM call failed: %s", exc)
-        llm_failed = True
-        answer = (
-            "I'm sorry, the AI service is temporarily unavailable. "
-            "The relevant sources have been retrieved and are shown below."
+    if tier in ("full", "english_only"):
+        prompt = ADAB_SYSTEM_PROMPT.format(
+            sources=sources_text,
+            question=body.question,
+            query_context=query_context,
         )
+        try:
+            answer = await call_llm(system_prompt=prompt, user_message=body.question)
+        except LLMError as exc:
+            logger.error("LLM call failed: %s", exc)
+            llm_failed = True
+            answer = (
+                "I'm sorry, the AI service is temporarily unavailable. "
+                "The relevant sources have been retrieved and are shown below."
+            )
+    else:
+        # Tier 3: chunked synthesis (sources_text has global numbering)
+        chunk_texts = split_sources_text_into_chunks(sources_text, source_budget)
+        try:
+            answer = ""
+            async for token in stream_llm_chunked_synthesis(
+                system_prompt=ADAB_CHAT_SYSTEM_PROMPT,
+                source_chunks=chunk_texts,
+                question=body.question,
+                query_context=query_context,
+                history=[],
+            ):
+                answer += token
+        except LLMError as exc:
+            logger.error("Chunked synthesis failed: %s", exc)
+            llm_failed = True
+            answer = (
+                "I'm sorry, the AI service is temporarily unavailable. "
+                "The relevant sources have been retrieved and are shown below."
+            )
 
     # 4. Build and finalize citations (numbered to match [Source N] blocks)
     # Skip when the LLM failed — no [N] markers in the error message.

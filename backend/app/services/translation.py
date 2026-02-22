@@ -27,6 +27,9 @@ async def translate_arabic_citations(citations: list[Citation]) -> list[Citation
         if cit.text_arabic and not cit.text_english:
             arabic_indices.append(i)
 
+    if arabic_indices:
+        logger.info("Arabic-only citations to translate: %d of %d", len(arabic_indices), len(citations))
+
     if not arabic_indices:
         return citations
 
@@ -48,19 +51,21 @@ async def translate_arabic_citations(citations: list[Citation]) -> list[Citation
             system_prompt=TRANSLATION_SYSTEM_PROMPT,
             user_message=user_message,
             temperature=0.2,
-            max_tokens=800,
+            max_tokens=min(800 * len(batch_indices) + 200, 16384),
         )
         translations = _parse_json_array(raw, expected=len(batch_indices))
     except (LLMError, ValueError) as exc:
         logger.warning("Translation failed, returning citations untranslated: %s", exc)
         return citations
 
-    # Apply translations
+    # Apply translations (Pydantic v2 models are immutable — use model_copy)
     translated_count = 0
     for idx, translation in zip(batch_indices, translations):
         if translation:
-            citations[idx].text_english = translation
-            citations[idx].auto_translated = True
+            citations[idx] = citations[idx].model_copy(update={
+                "text_english": translation,
+                "auto_translated": True,
+            })
             translated_count += 1
 
     logger.info("Auto-translated %d Arabic-only citations", translated_count)

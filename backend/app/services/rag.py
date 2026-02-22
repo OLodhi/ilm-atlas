@@ -15,6 +15,7 @@ from app.services.embedding import embed_texts
 from app.services.keyword_search import keyword_search, metadata_search
 from app.services.query_classifier import QueryIntent, classify_query
 from app.services.query_expander import expand_query
+from app.services.token_budget import estimate_tokens
 from app.services.translation import translate_arabic_citations
 from app.services.vector_store import fetch_passage, search
 
@@ -148,6 +149,233 @@ async def finalize_citations(
     if not numbered:
         citations = _filter_and_order_citations(answer, citations)
     return citations
+
+
+def build_sources_tiered(
+    hits: list[dict],
+    intent: QueryIntent,
+    top_k: int,
+    max_source_tokens: int,
+) -> tuple[str, str, str]:
+    """Build source text with automatic tier selection based on token budget.
+
+    Returns (sources_text, query_context, tier) where tier is one of:
+    - "full": Arabic + English (Tier 1)
+    - "english_only": English text only (Tier 2)
+    - "chunked": Sources exceed budget even in English-only mode (Tier 3)
+    """
+    # Tier 1: try full bilingual sources
+    sources_text, query_context = _build_sources_and_context(hits, intent, top_k)
+    if estimate_tokens(sources_text) <= max_source_tokens:
+        logger.info("Prompt tier: full (%d tokens)", estimate_tokens(sources_text))
+        return sources_text, query_context, "full"
+
+    # Tier 2: English-only sources
+    sources_text, query_context = _build_sources_english_only(hits, intent, top_k)
+    if estimate_tokens(sources_text) <= max_source_tokens:
+        logger.info("Prompt tier: english_only (%d tokens)", estimate_tokens(sources_text))
+        return sources_text, query_context, "english_only"
+
+    # Tier 3: signal chunking needed
+    logger.info(
+        "Tier 3: %d hits need chunking (%d tokens > %d budget)",
+        len(hits), estimate_tokens(sources_text), max_source_tokens,
+    )
+    return sources_text, query_context, "chunked"
+
+
+def split_sources_text_into_chunks(
+    sources_text: str,
+    max_tokens_per_chunk: int,
+) -> list[str]:
+    """Split pre-formatted source text into chunks at source block boundaries.
+
+    The input ``sources_text`` already has globally-numbered ``[Source N]``
+    blocks separated by ``---``.  We split at those boundaries so each chunk
+    preserves the original numbering — no renumbering collisions across chunks.
+
+    Returns a list of source text strings, each within the token budget.
+    """
+    blocks = sources_text.split("\n\n---\n\n")
+    chunks: list[str] = []
+    current_blocks: list[str] = []
+    current_tokens = 0
+
+    for block in blocks:
+        block_tokens = estimate_tokens(block)
+
+        if current_blocks and current_tokens + block_tokens > max_tokens_per_chunk:
+            chunks.append("\n\n---\n\n".join(current_blocks))
+            current_blocks = []
+            current_tokens = 0
+
+        current_blocks.append(block)
+        current_tokens += block_tokens
+
+    if current_blocks:
+        chunks.append("\n\n---\n\n".join(current_blocks))
+
+    logger.info(
+        "Tier 3: splitting %d source blocks into %d chunks",
+        len(blocks), len(chunks),
+    )
+    return chunks
+
+
+# ---------------------------------------------------------------------------
+# Internals — English-only formatting (Tier 2)
+# ---------------------------------------------------------------------------
+
+def _build_sources_english_only(
+    hits: list[dict],
+    intent: QueryIntent,
+    top_k: int,
+) -> tuple[str, str]:
+    """Build sources_text using English-only formatters (drops Arabic to save tokens).
+
+    Mirrors _build_sources_and_context structure but uses English-only formatters.
+    """
+    if intent.structural_context:
+        return _build_sources_and_context(hits, intent, top_k)
+
+    if intent.query_type in ("counting", "listing"):
+        source_blocks = [_format_source_english_only(hit, i + 1) for i, hit in enumerate(hits)]
+        sources_text = "\n\n---\n\n".join(source_blocks)
+    else:
+        source_blocks = []
+        source_idx = 1
+        i = 0
+        while i < len(hits):
+            hit = hits[i]
+            ruku = hit["payload"].get("ruku")
+            if ruku is not None and hit["payload"].get("chunk_type") == "ayah":
+                group = [hit]
+                j = i + 1
+                while j < len(hits):
+                    next_hit = hits[j]
+                    if (next_hit["payload"].get("ruku") == ruku
+                            and next_hit["payload"].get("chunk_type") == "ayah"):
+                        group.append(next_hit)
+                        j += 1
+                    else:
+                        break
+                source_blocks.append(_format_passage_english_only(group, source_idx))
+                source_idx += 1
+                i = j
+            else:
+                source_blocks.append(_format_source_english_only(hit, source_idx))
+                source_idx += 1
+                i += 1
+        sources_text = "\n\n---\n\n".join(source_blocks)
+
+    # Reuse metadata header logic from _build_sources_and_context
+    metadata_desc = ""
+    if intent.query_type == "metadata" and intent.metadata_filter and hits:
+        mf = intent.metadata_filter
+        first_payload = hits[0]["payload"]
+        surah_name = first_payload.get("surah_name_english", "")
+        parts = []
+        if mf.surah_number is not None:
+            label = f"Surah {surah_name} (#{mf.surah_number})" if surah_name else f"Surah {mf.surah_number}"
+            parts.append(label)
+        if mf.ayah_number is not None:
+            parts.append(f"Ayah {mf.ayah_number}")
+        if mf.juz is not None:
+            parts.append(f"Juz {mf.juz}")
+        if parts:
+            metadata_desc = f" from {', '.join(parts)}"
+
+        metadata_header = (
+            f"[Database Metadata]\n"
+            f"The following {len(hits)} ayah(s) were retrieved{metadata_desc}. "
+            f"Surah {surah_name} is surah number {mf.surah_number} out of 114 surahs in the Quran."
+            if mf.surah_number and surah_name else
+            f"[Database Metadata]\n"
+            f"The following {len(hits)} ayah(s) were retrieved{metadata_desc}."
+        )
+        sources_text = metadata_header + "\n\n---\n\n" + sources_text
+        query_context = _build_query_context(intent.query_type, len(hits), metadata_desc)
+    else:
+        query_context = _build_query_context(intent.query_type, len(hits))
+
+    return sources_text, query_context
+
+
+def _format_source_english_only(hit: dict, index: int) -> str:
+    """Format a single hit, dropping Arabic when English exists."""
+    payload = hit["payload"]
+    parts = [f"[Source {index}]"]
+
+    chunk_type = payload.get("chunk_type", "")
+    if chunk_type == "ayah":
+        surah = payload.get("surah_name_english", "")
+        surah_num = payload.get("surah_number", "")
+        ayah_num = payload.get("ayah_number", "")
+        parts.append(f"Quran, Surah {surah} ({surah_num}:{ayah_num})")
+    elif chunk_type == "hadith":
+        book_title = payload.get("book_title", "Unknown")
+        meta = payload.get("metadata", {}) or {}
+        hadith_num = payload.get("hadith_number") or meta.get("hadith_number", "")
+        parts.append(f"{book_title}, Hadith {hadith_num}")
+    elif chunk_type == "tafsir":
+        book_title = payload.get("book_title", "Unknown Tafsir")
+        surah = payload.get("surah_name_english", "")
+        surah_num = payload.get("surah_number", 0)
+        ayah_num = payload.get("ayah_number", 0)
+        if surah_num and surah:
+            parts.append(f"{book_title}, Surah {surah} ({surah_num}:{ayah_num})")
+        elif surah_num:
+            parts.append(f"{book_title} ({surah_num}:{ayah_num})")
+        else:
+            parts.append(book_title)
+    else:
+        book_title = payload.get("book_title", "Unknown")
+        page = payload.get("page_number", "")
+        parts.append(f"{book_title}, p. {page}" if page else book_title)
+
+    english = payload.get("content_english", "")
+    arabic = payload.get("content_arabic", "")
+
+    if english:
+        parts.append(f"English: {english}")
+    elif arabic:
+        # Fallback to Arabic if no English exists
+        parts.append(f"Arabic: {arabic}")
+
+    return "\n".join(parts)
+
+
+def _format_passage_english_only(hits: list[dict], index: int) -> str:
+    """Format a ruku passage group, dropping Arabic when English exists."""
+    if not hits:
+        return ""
+
+    first = hits[0]["payload"]
+    last = hits[-1]["payload"]
+    surah = first.get("surah_name_english", "")
+    surah_num = first.get("surah_number", "")
+    first_ayah = first.get("ayah_number", "")
+    last_ayah = last.get("ayah_number", "")
+
+    if first_ayah == last_ayah:
+        ref = f"{surah_num}:{first_ayah}"
+    else:
+        ref = f"{surah_num}:{first_ayah}-{last_ayah}"
+
+    parts = [f"[Source {index}]", f"Quran, Surah {surah} ({ref})"]
+
+    for hit in hits:
+        p = hit["payload"]
+        ayah_num = p.get("ayah_number", "")
+        english = p.get("content_english", "")
+        arabic = p.get("content_arabic", "")
+        parts.append(f"  {surah_num}:{ayah_num}")
+        if english:
+            parts.append(f"  English: {english}")
+        elif arabic:
+            parts.append(f"  Arabic: {arabic}")
+
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
