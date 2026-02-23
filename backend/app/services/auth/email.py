@@ -1,3 +1,4 @@
+import asyncio
 import html
 import logging
 
@@ -21,7 +22,7 @@ async def send_verification_email(to_email: str, token: str, display_name: str |
     verify_url = f"{settings.frontend_url}/verify-email?token={token}"
 
     try:
-        resend.Emails.send({
+        await asyncio.to_thread(resend.Emails.send, {
             "from": settings.email_from,
             "to": [to_email],
             "subject": "Verify your Ilm Atlas account",
@@ -40,7 +41,7 @@ async def send_password_reset_email(to_email: str, token: str, display_name: str
     reset_url = f"{settings.frontend_url}/reset-password?token={token}"
 
     try:
-        resend.Emails.send({
+        await asyncio.to_thread(resend.Emails.send, {
             "from": settings.email_from,
             "to": [to_email],
             "subject": "Reset your Ilm Atlas password",
