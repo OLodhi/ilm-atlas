@@ -604,4 +604,4 @@ async def _stream_response(
 
         except Exception as exc:
             logger.exception("Streaming error")
-            yield _sse_event("error", {"detail": str(exc)})
+            yield _sse_event("error", {"detail": "An unexpected error occurred. Please try again."})
