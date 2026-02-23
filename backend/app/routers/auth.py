@@ -29,7 +29,7 @@ from app.models.schemas import (
 from app.services.auth.common_passwords import is_common_password
 from app.services.auth.usage import get_usage
 from app.services.auth.email import send_password_reset_email, send_verification_email
-from app.services.auth.password import hash_password, verify_password
+from app.services.auth.password import DUMMY_HASH as _DUMMY_HASH, hash_password, verify_password
 from app.services.auth.tokens import (
     create_access_token,
     generate_refresh_token,
@@ -164,8 +164,12 @@ async def login(
             detail=f"Account temporarily locked. Try again in {remaining} minute(s).",
         )
 
-    # Verify password (constant-time even if user not found)
-    if user is None or not verify_password(body.password, user.password_hash):
+    # Always run bcrypt to prevent timing-based email enumeration
+    password_valid = verify_password(
+        body.password,
+        user.password_hash if user is not None else _DUMMY_HASH,
+    )
+    if user is None or not password_valid:
         if user:
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= 5:
@@ -489,6 +493,17 @@ async def reset_password(
     user = await session.get(User, token_record.user_id)
     if user is not None:
         user.password_hash = hash_password(body.new_password)
+
+        # Revoke all existing refresh tokens — if the password was
+        # compromised, old sessions must not survive the reset.
+        result_tokens = await session.execute(
+            select(RefreshToken).where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked_at.is_(None),
+            )
+        )
+        for token in result_tokens.scalars():
+            token.revoked_at = datetime.now(timezone.utc)
 
     await session.commit()
 
