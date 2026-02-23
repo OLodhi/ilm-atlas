@@ -366,18 +366,16 @@ export async function streamChatMessage(
   callbacks: StreamCallbacks,
   signal?: AbortSignal
 ): Promise<void> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+  const buildHeaders = (): Record<string, string> => {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    if (accessToken) h["Authorization"] = `Bearer ${accessToken}`;
+    return h;
   };
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
-  }
 
-  const res = await fetch(
-    `${API_URL}/chat/sessions/${sessionId}/messages/stream`,
-    {
+  const doFetch = () =>
+    fetch(`${API_URL}/chat/sessions/${sessionId}/messages/stream`, {
       method: "POST",
-      headers,
+      headers: buildHeaders(),
       credentials: "include",
       body: JSON.stringify({
         message: req.message,
@@ -385,8 +383,20 @@ export async function streamChatMessage(
         category: req.category === "all" ? null : req.category,
       }),
       signal,
+    });
+
+  let res = await doFetch();
+
+  // Retry once on 401 after refreshing the access token
+  if (res.status === 401) {
+    try {
+      await ensureValidToken();
+      res = await doFetch();
+    } catch {
+      accessToken = null;
+      throw new ApiError(401, "Session expired. Please log in again.");
     }
-  );
+  }
 
   if (!res.ok) {
     let detail: string;
@@ -399,7 +409,10 @@ export async function streamChatMessage(
     throw new ApiError(res.status, detail);
   }
 
-  const reader = res.body!.getReader();
+  if (!res.body) {
+    throw new ApiError(0, "Response body is empty — streaming not supported.");
+  }
+  const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 
