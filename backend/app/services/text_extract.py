@@ -1,8 +1,6 @@
 import logging
 from pathlib import Path
 
-import pdfplumber
-
 logger = logging.getLogger(__name__)
 
 
@@ -17,6 +15,8 @@ async def extract_text_from_pdf(file_path: str) -> list[dict]:
 
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {file_path}")
+
+    import pdfplumber
 
     with pdfplumber.open(path) as pdf:
         for i, page in enumerate(pdf.pages, start=1):
@@ -50,6 +50,8 @@ async def extract_text_from_file(file_path: str) -> list[dict]:
 
 def has_extractable_text(file_path: str) -> bool:
     """Check if a PDF has extractable text (not just scanned images)."""
+    import pdfplumber
+
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages[:3]:  # Check first 3 pages
             text = page.extract_text() or ""
