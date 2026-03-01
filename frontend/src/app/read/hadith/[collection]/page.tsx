@@ -7,25 +7,22 @@ import { ReaderLayout } from "@/components/reader/reader-layout";
 import { Breadcrumbs } from "@/components/reader/breadcrumbs";
 import { fetchHadithBooks, fetchHadithCollections } from "@/lib/api-client";
 import { BookListSidebar } from "@/components/reader/hadith/book-list-sidebar";
-import type { HadithBookSummary, CollectionSummary } from "@/lib/types";
+import type { HadithBookSummary } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function HadithCollectionPage() {
   const params = useParams();
   const slug = params.collection as string;
 
-  const [collections, setCollections] = useState<CollectionSummary[] | null>(null);
-  const [collection, setCollection] = useState<CollectionSummary | null>(null);
+  const [collectionName, setCollectionName] = useState<string>(slug);
   const [books, setBooks] = useState<HadithBookSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Get collection name from collections list
     fetchHadithCollections()
       .then((cols) => {
-        setCollections(cols);
         const match = cols.find((c) => c.slug === slug);
-        if (match) setCollection(match);
+        if (match) setCollectionName(match.name);
       })
       .catch(console.error);
 
@@ -33,8 +30,6 @@ export default function HadithCollectionPage() {
       .then(setBooks)
       .catch(() => setError("Collection not found"));
   }, [slug]);
-
-  const collectionName = collection?.name ?? slug;
 
   return (
     <ReaderLayout
