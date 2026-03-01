@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { ReaderLayout } from "@/components/reader/reader-layout";
 import { Breadcrumbs } from "@/components/reader/breadcrumbs";
 import { fetchHadithBooks, fetchHadithCollections } from "@/lib/api-client";
-import { CollectionListSidebar } from "@/components/reader/hadith/collection-list-sidebar";
+import { BookListSidebar } from "@/components/reader/hadith/book-list-sidebar";
 import type { HadithBookSummary, CollectionSummary } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -38,7 +38,7 @@ export default function HadithCollectionPage() {
 
   return (
     <ReaderLayout
-      sidebarContent={collections ? <CollectionListSidebar collections={collections} /> : null}
+      sidebarContent={books ? <BookListSidebar collectionSlug={slug} books={books} /> : null}
     >
       <div className="mx-auto max-w-4xl p-6">
         <Breadcrumbs
