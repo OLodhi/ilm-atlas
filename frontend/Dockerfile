@@ -25,10 +25,12 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Ensure public dir exists (may be empty)
+RUN mkdir -p /app/public
+
 # Copy standalone output
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
 
 USER node
 
