@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # Embedding model
     embedding_model: str = "BAAI/bge-m3"
 
+    # Embedding provider ("local" for bge-m3, "voyageai" for Voyage AI API)
+    embedding_provider: str = "local"
+    voyage_api_key: str = ""
+    voyage_model: str = "voyage-3-large"
+
     # Upload directory
     upload_dir: str = "./uploads"
 
