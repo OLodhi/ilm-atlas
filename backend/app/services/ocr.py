@@ -32,7 +32,6 @@ async def ocr_pdf(file_path: str, languages: list[str] | None = None) -> list[di
 
     _load_models()
 
-    from PIL import Image
     import pypdfium2 as pdfium
 
     path = Path(file_path)

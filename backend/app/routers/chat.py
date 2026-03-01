@@ -618,6 +618,6 @@ async def _stream_response(
                 "created_at": assistant_msg.created_at.isoformat(),
             })
 
-        except Exception as exc:
+        except Exception:
             logger.exception("Streaming error")
             yield _sse_event("error", {"detail": "An unexpected error occurred. Please try again."})

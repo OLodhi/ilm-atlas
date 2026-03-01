@@ -737,11 +737,6 @@ def _diversify_sources(hits: list[dict], top_k: int) -> list[dict]:
     quran_hits = [h for h in hits if h["payload"].get("chunk_type") == "ayah"]
     hadith_hits = [h for h in hits if h["payload"].get("chunk_type") == "hadith"]
     tafsir_hits = [h for h in hits if h["payload"].get("chunk_type") == "tafsir"]
-    other_hits = [
-        h for h in hits
-        if h["payload"].get("chunk_type") not in ("ayah", "hadith", "tafsir")
-    ]
-
     quran_quota = min(ceil(top_k * 0.4), len(quran_hits))
     hadith_quota = min(ceil(top_k * 0.3), len(hadith_hits))
     tafsir_quota = min(ceil(top_k * 0.2), len(tafsir_hits))
