@@ -8,9 +8,10 @@ import { ReaderLayout } from "@/components/reader/reader-layout";
 import { Breadcrumbs } from "@/components/reader/breadcrumbs";
 import { TypographyControls } from "@/components/reader/typography-controls";
 import { ArabicText } from "@/components/shared/arabic-text";
-import { fetchTafsirSurahDetail } from "@/lib/api-client";
+import { fetchTafsirSurahDetail, fetchSurahs } from "@/lib/api-client";
+import { SurahNavSidebar } from "@/components/reader/tafsir/surah-nav-sidebar";
 import { useReaderSettings } from "@/hooks/use-reader-settings";
-import type { TafsirSurahDetailResponse } from "@/lib/types";
+import type { TafsirSurahDetailResponse, SurahSummary } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function TafsirSurahPage() {
@@ -18,6 +19,7 @@ export default function TafsirSurahPage() {
   const tafsirSlug = params.tafsirSlug as string;
   const surahNumber = Number(params.surahNumber);
 
+  const [surahs, setSurahs] = useState<SurahSummary[] | null>(null);
   const [detail, setDetail] = useState<TafsirSurahDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,6 +32,10 @@ export default function TafsirSurahPage() {
   } = useReaderSettings();
 
   useEffect(() => {
+    fetchSurahs().then(setSurahs).catch(console.error);
+  }, []);
+
+  useEffect(() => {
     setDetail(null);
     setError(null);
     fetchTafsirSurahDetail(tafsirSlug, surahNumber)
@@ -38,8 +44,10 @@ export default function TafsirSurahPage() {
   }, [tafsirSlug, surahNumber]);
 
   return (
-    <ReaderLayout>
-      <div className="mx-auto max-w-3xl p-6">
+    <ReaderLayout
+      sidebarContent={surahs ? <SurahNavSidebar tafsirSlug={tafsirSlug} surahs={surahs} /> : null}
+    >
+      <div className="mx-auto max-w-4xl p-6">
         <div className="flex items-center justify-between">
           <Breadcrumbs
             items={[

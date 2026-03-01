@@ -9,6 +9,7 @@ import { Breadcrumbs } from "@/components/reader/breadcrumbs";
 import { TypographyControls } from "@/components/reader/typography-controls";
 import { HadithCard } from "@/components/reader/hadith/hadith-card";
 import { fetchHadithBookDetail, fetchHadithBooks } from "@/lib/api-client";
+import { BookListSidebar } from "@/components/reader/hadith/book-list-sidebar";
 import { useReaderSettings } from "@/hooks/use-reader-settings";
 import type { HadithBookDetailResponse, HadithBookSummary } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -50,8 +51,10 @@ export default function HadithBookPage() {
   const nextBook = books && bookIndex < books.length - 1 ? books[bookIndex + 1] : null;
 
   return (
-    <ReaderLayout>
-      <div className="mx-auto max-w-3xl p-6">
+    <ReaderLayout
+      sidebarContent={books ? <BookListSidebar collectionSlug={slug} books={books} /> : null}
+    >
+      <div className="mx-auto max-w-4xl p-6">
         <div className="flex items-center justify-between">
           <Breadcrumbs
             items={[
