@@ -32,10 +32,10 @@ if sys.platform == "win32":
 def get_embeddable_text(payload: dict) -> str:
     """Reconstruct the text that should be embedded from a Qdrant payload."""
     parts = []
-    if payload.get("text_arabic"):
-        parts.append(payload["text_arabic"])
-    if payload.get("text_english"):
-        parts.append(payload["text_english"])
+    if payload.get("content_arabic"):
+        parts.append(payload["content_arabic"])
+    if payload.get("content_english"):
+        parts.append(payload["content_english"])
     return " ".join(parts) if parts else ""
 
 
