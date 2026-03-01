@@ -32,6 +32,7 @@ from app.prompts.session_title import SESSION_TITLE_SYSTEM_PROMPT
 from app.services.llm import LLMError, call_llm, call_llm_chat, stream_llm_chat, stream_llm_chunked_synthesis
 from app.services.auth.usage import check_and_increment_usage
 from app.services.rag import build_numbered_citations, build_sources_tiered, finalize_citations, retrieve_and_format, split_sources_text_into_chunks
+from app.services.translation import translate_arabic_citations
 from app.services.token_budget import available_source_tokens
 
 logger = logging.getLogger(__name__)
@@ -528,6 +529,14 @@ async def _stream_response(
             if needs_title:
                 title_task = asyncio.create_task(_generate_title(body.message))
 
+            # 6b. Pre-build citations and start translation concurrently with streaming
+            citation_task = None
+            if rag_result:
+                citations_pre = build_numbered_citations(rag_result.hits, rag_result.intent)
+                citation_task = asyncio.create_task(
+                    translate_arabic_citations(citations_pre)
+                )
+
             # 7. Stream LLM response
             full_answer = ""
             llm_failed = False
@@ -555,6 +564,8 @@ async def _stream_response(
                         logger.info("Client disconnected during streaming")
                         if title_task:
                             title_task.cancel()
+                        if citation_task:
+                            citation_task.cancel()
                         return
             except (LLMError, httpx.ReadTimeout, httpx.ReadError) as exc:
                 logger.error("LLM streaming failed: %s", exc)
@@ -565,11 +576,16 @@ async def _stream_response(
                 )
                 yield _sse_event("content_delta", {"token": full_answer})
 
-            # 8. Build citations
+            # 8. Await pre-built citations (translation ran during streaming)
             citations: list[Citation] = []
-            if rag_result and not llm_failed:
-                citations = build_numbered_citations(rag_result.hits, rag_result.intent)
-                citations = await finalize_citations(full_answer, citations, numbered=True)
+            if citation_task and not llm_failed:
+                try:
+                    citations = await citation_task
+                except Exception:
+                    logger.warning("Citation translation failed, using untranslated")
+                    citations = build_numbered_citations(rag_result.hits, rag_result.intent)
+            elif citation_task:
+                citation_task.cancel()
 
             if citations:
                 yield _sse_event("citations", {
