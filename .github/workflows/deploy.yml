@@ -67,7 +67,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ matrix.service }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ matrix.service }}:${{ github.sha }}
           build-args: |
-            NEXT_PUBLIC_API_URL=${{ matrix.service == 'frontend' && 'https://api.ilmatlas.com' || '' }}
+            NEXT_PUBLIC_API_URL=${{ matrix.service == 'frontend' && 'https://api.ilm-atlas.com' || '' }}
 
   deploy:
     needs: build-and-push
