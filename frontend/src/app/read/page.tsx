@@ -51,7 +51,7 @@ export default function ReadPage() {
 
   return (
     <ReaderLayout>
-      <div className="mx-auto max-w-3xl p-6">
+      <div className="mx-auto max-w-4xl p-6">
         <Breadcrumbs items={[{ label: "Library" }]} />
 
         <h1 className="mt-4 text-2xl font-semibold">Source Library</h1>

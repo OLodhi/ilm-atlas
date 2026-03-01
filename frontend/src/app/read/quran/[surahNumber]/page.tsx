@@ -46,7 +46,7 @@ export default function SurahPage() {
     <ReaderLayout
       sidebarContent={surahs ? <SurahListSidebar surahs={surahs} /> : null}
     >
-      <div className="mx-auto max-w-3xl p-6">
+      <div className="mx-auto max-w-4xl p-6">
         <div className="flex items-center justify-between">
           <Breadcrumbs
             items={[

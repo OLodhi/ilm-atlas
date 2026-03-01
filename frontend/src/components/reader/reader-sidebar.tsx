@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { BookOpen, BookText, MessageSquareText } from "lucide-react";
+import { BookOpen, BookText, MessageSquareText, ArrowLeft } from "lucide-react";
 
 const SOURCE_TYPES = [
   { href: "/read/quran", label: "Quran", icon: BookOpen, color: "text-emerald-600" },
@@ -21,7 +21,16 @@ export function ReaderSidebar({ children }: ReaderSidebarProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="shrink-0 border-b p-4">
-        <h2 className="text-sm font-semibold">Library</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Library</h2>
+          <Link
+            href="/"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Home
+          </Link>
+        </div>
       </div>
 
       <div className="shrink-0 border-b p-2">

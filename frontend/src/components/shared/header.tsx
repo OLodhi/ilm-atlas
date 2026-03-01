@@ -24,6 +24,9 @@ export function Header() {
     router.push("/");
   }
 
+  // Reader has its own full-screen layout with sidebar navigation
+  if (pathname.startsWith("/read")) return null;
+
   return (
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-7xl items-center px-4">
