@@ -7,7 +7,7 @@ and aggregate library statistics.
 
 import re
 
-from sqlalchemy import select, func, cast, Integer, distinct, and_
+from sqlalchemy import select, func, cast, Integer, distinct, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db import Book, Source, Chunk
@@ -32,13 +32,17 @@ from app.models.reader_schemas import (
 # ---------------------------------------------------------------------------
 
 def _json_text(column, key: str):
-    """Extract text from a JSONB column: column->>'key'."""
-    return column[key].astext
+    """Extract text from a JSONB column using literal key for GROUP BY compat.
+
+    Uses column.op('->>') with text() to produce literal SQL keys, avoiding
+    bound-parameter keys that PostgreSQL cannot match between SELECT/GROUP BY.
+    """
+    return column.op("->>", return_type=column.type)(text(f"'{key}'"))
 
 
 def _json_int(column, key: str):
-    """Extract integer from a JSONB column: (column->>'key')::int."""
-    return cast(column[key].astext, Integer)
+    """Extract integer from a JSONB column using literal key."""
+    return cast(column.op("->>", return_type=column.type)(text(f"'{key}'")), Integer)
 
 
 def slugify(name: str) -> str:
@@ -74,8 +78,8 @@ async def get_quran_surahs(session: AsyncSession) -> list[SurahSummary]:
     stmt = (
         select(
             _json_int(meta, "surah_number").label("surah_number"),
-            _json_text(meta, "surah_name_arabic").label("name_arabic"),
-            _json_text(meta, "surah_name_english").label("name_english"),
+            func.min(_json_text(meta, "surah_name_arabic")).label("name_arabic"),
+            func.min(_json_text(meta, "surah_name_english")).label("name_english"),
             func.count().label("ayah_count"),
             func.min(_json_text(meta, "revelation_type")).label("revelation_type"),
         )
@@ -87,11 +91,7 @@ async def get_quran_surahs(session: AsyncSession) -> list[SurahSummary]:
                 Book.category == "quran",
             )
         )
-        .group_by(
-            _json_int(meta, "surah_number"),
-            _json_text(meta, "surah_name_arabic"),
-            _json_text(meta, "surah_name_english"),
-        )
+        .group_by(_json_int(meta, "surah_number"))
         .order_by(_json_int(meta, "surah_number"))
     )
 
@@ -120,8 +120,8 @@ async def get_surah_detail(
     summary_stmt = (
         select(
             _json_int(meta, "surah_number").label("surah_number"),
-            _json_text(meta, "surah_name_arabic").label("name_arabic"),
-            _json_text(meta, "surah_name_english").label("name_english"),
+            func.min(_json_text(meta, "surah_name_arabic")).label("name_arabic"),
+            func.min(_json_text(meta, "surah_name_english")).label("name_english"),
             func.count().label("ayah_count"),
             func.min(_json_text(meta, "revelation_type")).label("revelation_type"),
         )
@@ -134,11 +134,7 @@ async def get_surah_detail(
                 _json_int(meta, "surah_number") == surah_number,
             )
         )
-        .group_by(
-            _json_int(meta, "surah_number"),
-            _json_text(meta, "surah_name_arabic"),
-            _json_text(meta, "surah_name_english"),
-        )
+        .group_by(_json_int(meta, "surah_number"))
     )
 
     summary_result = await session.execute(summary_stmt)
@@ -592,67 +588,46 @@ async def get_library_stats(session: AsyncSession) -> LibraryStats:
     meta = Chunk.metadata_json
 
     # Quran stats
-    quran_base = (
-        select(Chunk.id)
+    quran_stmt = (
+        select(
+            func.count(distinct(_json_int(meta, "surah_number"))).label("surahs"),
+            func.count(Chunk.id).label("ayahs"),
+        )
         .join(Source, Chunk.source_id == Source.id)
         .join(Book, Source.book_id == Book.id)
         .where(and_(Chunk.chunk_type == "ayah", Book.category == "quran"))
     )
-
-    quran_surah_stmt = select(
-        func.count(distinct(_json_int(meta, "surah_number")))
-    ).select_from(
-        quran_base.add_columns(_json_int(meta, "surah_number")).subquery()
-    )
-
-    quran_ayah_stmt = select(func.count()).select_from(quran_base.subquery())
+    quran = (await session.execute(quran_stmt)).first()
 
     # Hadith stats
-    hadith_base = (
-        select(Chunk.id)
+    hadith_stmt = (
+        select(
+            func.count(distinct(Book.id)).label("collections"),
+            func.count(Chunk.id).label("hadiths"),
+        )
         .join(Source, Chunk.source_id == Source.id)
         .join(Book, Source.book_id == Book.id)
         .where(and_(Chunk.chunk_type == "hadith", Book.category == "hadith"))
     )
-
-    hadith_collection_stmt = select(
-        func.count(distinct(Book.id))
-    ).select_from(
-        hadith_base.add_columns(Book.id).subquery()
-    )
-
-    hadith_count_stmt = select(func.count()).select_from(hadith_base.subquery())
+    hadith = (await session.execute(hadith_stmt)).first()
 
     # Tafsir stats
-    tafsir_base = (
-        select(Chunk.id)
+    tafsir_stmt = (
+        select(
+            func.count(distinct(Book.id)).label("tafsirs"),
+            func.count(Chunk.id).label("entries"),
+        )
         .join(Source, Chunk.source_id == Source.id)
         .join(Book, Source.book_id == Book.id)
         .where(and_(Chunk.chunk_type == "tafsir", Book.category == "tafsir"))
     )
-
-    tafsir_book_stmt = select(
-        func.count(distinct(Book.id))
-    ).select_from(
-        tafsir_base.add_columns(Book.id).subquery()
-    )
-
-    tafsir_entry_stmt = select(func.count()).select_from(tafsir_base.subquery())
-
-    # Execute all in parallel-ish (SQLAlchemy async session serialises,
-    # but keeps the code intent clear)
-    quran_surah_count = (await session.execute(quran_surah_stmt)).scalar() or 0
-    quran_ayah_count = (await session.execute(quran_ayah_stmt)).scalar() or 0
-    hadith_collection_count = (await session.execute(hadith_collection_stmt)).scalar() or 0
-    hadith_count = (await session.execute(hadith_count_stmt)).scalar() or 0
-    tafsir_count = (await session.execute(tafsir_book_stmt)).scalar() or 0
-    tafsir_entry_count = (await session.execute(tafsir_entry_stmt)).scalar() or 0
+    tafsir = (await session.execute(tafsir_stmt)).first()
 
     return LibraryStats(
-        quran_surah_count=quran_surah_count,
-        quran_ayah_count=quran_ayah_count,
-        hadith_collection_count=hadith_collection_count,
-        hadith_count=hadith_count,
-        tafsir_count=tafsir_count,
-        tafsir_entry_count=tafsir_entry_count,
+        quran_surah_count=quran.surahs if quran else 0,
+        quran_ayah_count=quran.ayahs if quran else 0,
+        hadith_collection_count=hadith.collections if hadith else 0,
+        hadith_count=hadith.hadiths if hadith else 0,
+        tafsir_count=tafsir.tafsirs if tafsir else 0,
+        tafsir_entry_count=tafsir.entries if tafsir else 0,
     )
