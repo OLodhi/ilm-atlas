@@ -165,7 +165,13 @@ async def fetch_surah_alquran_cloud(
     resp = await client.get(url)
     resp.raise_for_status()
     data = resp.json()
-    return data["data"]["ayahs"]
+    ayahs = data["data"]["ayahs"]
+    # Some editions (e.g. Jalalayn) omit "surah" from ayah objects —
+    # inject it so the chunk builder always has the surah number.
+    for ayah in ayahs:
+        if "surah" not in ayah:
+            ayah["surah"] = {"number": surah_number}
+    return ayahs
 
 
 async def fetch_all_alquran_cloud(
