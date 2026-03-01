@@ -45,6 +45,16 @@ def _json_int(column, key: str):
     return cast(column.op("->>", return_type=column.type)(text(f"'{key}'")), Integer)
 
 
+def _json_int_first(column, key: str):
+    """Like _json_int but handles comma-separated values (e.g. "1241, 1242").
+
+    Takes the first value via split_part before casting. Uses text()
+    literals for the delimiter and position to avoid GROUP BY mismatch.
+    """
+    raw = _json_text(column, key)
+    return cast(func.split_part(raw, text("','"), text("1")), Integer)
+
+
 def slugify(name: str) -> str:
     """Derive a URL-safe slug from a book title.
 
@@ -390,7 +400,7 @@ async def get_hadith_book_detail(
     # Fetch hadiths in this chapter
     hadiths_stmt = (
         select(
-            _json_int(meta, "hadith_number").label("hadith_number"),
+            _json_int_first(meta, "hadith_number").label("hadith_number"),
             Chunk.content_arabic,
             Chunk.content_english,
             _json_text(meta, "chapter_english").label("chapter"),
@@ -405,7 +415,7 @@ async def get_hadith_book_detail(
                 _json_int(meta, "chapter_number") == book_number,
             )
         )
-        .order_by(_json_int(meta, "hadith_number"))
+        .order_by(_json_int_first(meta, "hadith_number"))
     )
 
     hadiths_result = await session.execute(hadiths_stmt)
