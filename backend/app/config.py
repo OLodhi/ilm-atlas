@@ -57,6 +57,11 @@ class Settings(BaseSettings):
                 "JWT_SECRET_KEY is using the default value! Change this in production.",
                 stacklevel=2,
             )
+        if self.embedding_provider == "voyageai" and not self.voyage_api_key:
+            warnings.warn(
+                "EMBEDDING_PROVIDER is 'voyageai' but VOYAGE_API_KEY is empty!",
+                stacklevel=2,
+            )
 
 
 settings = Settings()
