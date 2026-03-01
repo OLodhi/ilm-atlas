@@ -7,6 +7,7 @@ import { ReaderLayout } from "@/components/reader/reader-layout";
 import { Breadcrumbs } from "@/components/reader/breadcrumbs";
 import { fetchTafsirList } from "@/lib/api-client";
 import type { TafsirSummary } from "@/lib/types";
+import { TafsirListSidebar } from "@/components/reader/tafsir/tafsir-list-sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function TafsirPage() {
@@ -17,7 +18,9 @@ export default function TafsirPage() {
   }, []);
 
   return (
-    <ReaderLayout>
+    <ReaderLayout
+      sidebarContent={tafsirs ? <TafsirListSidebar tafsirs={tafsirs} /> : null}
+    >
       <div className="mx-auto max-w-4xl p-6">
         <Breadcrumbs
           items={[

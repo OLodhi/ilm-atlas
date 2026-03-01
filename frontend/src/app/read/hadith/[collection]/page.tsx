@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ReaderLayout } from "@/components/reader/reader-layout";
 import { Breadcrumbs } from "@/components/reader/breadcrumbs";
 import { fetchHadithBooks, fetchHadithCollections } from "@/lib/api-client";
+import { CollectionListSidebar } from "@/components/reader/hadith/collection-list-sidebar";
 import type { HadithBookSummary, CollectionSummary } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -13,6 +14,7 @@ export default function HadithCollectionPage() {
   const params = useParams();
   const slug = params.collection as string;
 
+  const [collections, setCollections] = useState<CollectionSummary[] | null>(null);
   const [collection, setCollection] = useState<CollectionSummary | null>(null);
   const [books, setBooks] = useState<HadithBookSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +23,7 @@ export default function HadithCollectionPage() {
     // Get collection name from collections list
     fetchHadithCollections()
       .then((cols) => {
+        setCollections(cols);
         const match = cols.find((c) => c.slug === slug);
         if (match) setCollection(match);
       })
@@ -34,7 +37,9 @@ export default function HadithCollectionPage() {
   const collectionName = collection?.name ?? slug;
 
   return (
-    <ReaderLayout>
+    <ReaderLayout
+      sidebarContent={collections ? <CollectionListSidebar collections={collections} /> : null}
+    >
       <div className="mx-auto max-w-4xl p-6">
         <Breadcrumbs
           items={[

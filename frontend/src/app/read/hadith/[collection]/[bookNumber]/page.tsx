@@ -8,9 +8,10 @@ import { ReaderLayout } from "@/components/reader/reader-layout";
 import { Breadcrumbs } from "@/components/reader/breadcrumbs";
 import { TypographyControls } from "@/components/reader/typography-controls";
 import { HadithCard } from "@/components/reader/hadith/hadith-card";
-import { fetchHadithBookDetail, fetchHadithBooks } from "@/lib/api-client";
+import { fetchHadithBookDetail, fetchHadithBooks, fetchHadithCollections } from "@/lib/api-client";
+import { CollectionListSidebar } from "@/components/reader/hadith/collection-list-sidebar";
 import { useReaderSettings } from "@/hooks/use-reader-settings";
-import type { HadithBookDetailResponse, HadithBookSummary } from "@/lib/types";
+import type { HadithBookDetailResponse, HadithBookSummary, CollectionSummary } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function HadithBookPage() {
@@ -18,6 +19,7 @@ export default function HadithBookPage() {
   const slug = params.collection as string;
   const bookNumber = Number(params.bookNumber);
 
+  const [collections, setCollections] = useState<CollectionSummary[] | null>(null);
   const [detail, setDetail] = useState<HadithBookDetailResponse | null>(null);
   const [books, setBooks] = useState<HadithBookSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +33,7 @@ export default function HadithBookPage() {
   } = useReaderSettings();
 
   useEffect(() => {
+    fetchHadithCollections().then(setCollections).catch(console.error);
     fetchHadithBooks(slug).then(setBooks).catch(console.error);
   }, [slug]);
 
@@ -50,7 +53,9 @@ export default function HadithBookPage() {
   const nextBook = books && bookIndex < books.length - 1 ? books[bookIndex + 1] : null;
 
   return (
-    <ReaderLayout>
+    <ReaderLayout
+      sidebarContent={collections ? <CollectionListSidebar collections={collections} /> : null}
+    >
       <div className="mx-auto max-w-4xl p-6">
         <div className="flex items-center justify-between">
           <Breadcrumbs
