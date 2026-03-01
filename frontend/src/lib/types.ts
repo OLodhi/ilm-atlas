@@ -149,3 +149,92 @@ export interface StreamCallbacks {
   onDone: (data: SSEDoneEvent) => void;
   onError: (data: SSEErrorEvent) => void;
 }
+
+// --- Reader ---
+
+export interface SurahSummary {
+  number: number;
+  name_arabic: string;
+  name_english: string;
+  ayah_count: number;
+  revelation_type: string;
+}
+
+export interface AyahResponse {
+  number: number;
+  text_arabic: string | null;
+  text_english: string | null;
+  juz: number | null;
+  ruku: number | null;
+}
+
+export interface SurahDetailResponse {
+  surah: SurahSummary;
+  ayahs: AyahResponse[];
+}
+
+export interface CollectionSummary {
+  slug: string;
+  name: string;
+  author: string;
+  hadith_count: number;
+  book_count: number;
+}
+
+export interface HadithBookSummary {
+  number: number;
+  name_arabic: string | null;
+  name_english: string | null;
+  hadith_count: number;
+}
+
+export interface HadithResponseType {
+  number: number;
+  text_arabic: string | null;
+  text_english: string | null;
+  chapter: string | null;
+}
+
+export interface HadithBookDetailResponse {
+  book: HadithBookSummary;
+  collection_name: string;
+  collection_slug: string;
+  hadiths: HadithResponseType[];
+}
+
+export interface TafsirSummary {
+  slug: string;
+  name: string;
+  author: string;
+  language: string;
+  surah_count: number;
+}
+
+export interface TafsirEntryResponse {
+  ayah_number: number;
+  text_arabic: string | null;
+  text_english: string | null;
+}
+
+export interface TafsirSurahDetailResponse {
+  tafsir: TafsirSummary;
+  surah_number: number;
+  surah_name: string;
+  entries: TafsirEntryResponse[];
+}
+
+export interface TafsirForAyah {
+  tafsir_name: string;
+  tafsir_slug: string;
+  language: string;
+  text: string | null;
+}
+
+export interface LibraryStats {
+  quran_surah_count: number;
+  quran_ayah_count: number;
+  hadith_collection_count: number;
+  hadith_count: number;
+  tafsir_count: number;
+  tafsir_entry_count: number;
+}
