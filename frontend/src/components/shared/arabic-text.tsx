@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-interface ArabicTextProps {
+interface ArabicTextProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   variant?: "default" | "quran";
   className?: string;
@@ -10,6 +10,7 @@ export function ArabicText({
   children,
   variant = "default",
   className,
+  ...rest
 }: ArabicTextProps) {
   return (
     <div
@@ -22,6 +23,7 @@ export function ArabicText({
           : "text-xl leading-loose",
         className
       )}
+      {...rest}
     >
       {children}
     </div>
