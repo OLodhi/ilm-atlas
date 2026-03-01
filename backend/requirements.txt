@@ -18,6 +18,9 @@ qdrant-client>=1.12.1
 # Embedding (bge-m3)
 sentence-transformers>=4.0
 
+# Embedding (Voyage AI cloud)
+voyageai>=0.3.2
+
 # OCR (surya brings pillow + pypdfium2)
 surya-ocr>=0.17.1
 

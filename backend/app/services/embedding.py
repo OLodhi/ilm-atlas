@@ -8,6 +8,16 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _model = None
+_voyage_client = None
+
+
+def _get_voyage_client():
+    global _voyage_client
+    if _voyage_client is None:
+        import voyageai
+        _voyage_client = voyageai.Client(api_key=settings.voyage_api_key)
+        logger.info("Voyage AI client initialized (model: %s)", settings.voyage_model)
+    return _voyage_client
 
 
 def _has_directml() -> bool:
@@ -105,10 +115,15 @@ def _load_onnx_directml_model():
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Generate embeddings for a list of texts using bge-m3.
+    """Generate embeddings for a list of texts.
 
-    Returns a list of float vectors (1024-dim for bge-m3).
+    Routes to Voyage AI (cloud) or bge-m3 (local) based on config.
+    Returns a list of float vectors (1024-dim).
     """
+    if settings.embedding_provider == "voyageai":
+        return _embed_voyage(texts)
+
+    # Local bge-m3 path (existing behavior)
     model_info = _load_model()
 
     if model_info[0] == "onnx":
@@ -145,6 +160,23 @@ def _embed_onnx(texts: list[str], session, tokenizer) -> list[list[float]]:
     embeddings = embeddings / norms
 
     return embeddings.tolist()
+
+
+def _embed_voyage(texts: list[str]) -> list[list[float]]:
+    """Embed texts using Voyage AI API.
+
+    Handles batching internally — Voyage AI accepts up to 128 texts per call.
+    """
+    client = _get_voyage_client()
+    all_embeddings: list[list[float]] = []
+    batch_size = 128
+
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        result = client.embed(texts=batch, model=settings.voyage_model)
+        all_embeddings.extend(result.embeddings)
+
+    return all_embeddings
 
 
 def embed_query(text: str) -> list[float]:
