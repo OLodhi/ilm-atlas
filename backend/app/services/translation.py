@@ -12,6 +12,34 @@ MAX_BATCH = 10
 MAX_CHARS_PER_TEXT = 1500
 
 
+async def translate_texts(texts: list[str]) -> list[str]:
+    """Translate a list of Arabic texts to English via a single LLM call.
+
+    Batches up to MAX_BATCH texts, caps each at MAX_CHARS_PER_TEXT chars.
+    Returns a list of English translations in the same order.
+    Raises ValueError or LLMError on failure.
+    """
+    if not texts:
+        return []
+
+    batch = texts[:MAX_BATCH]
+
+    numbered_lines: list[str] = []
+    for seq, text in enumerate(batch, start=1):
+        t = text[:MAX_CHARS_PER_TEXT] + "..." if len(text) > MAX_CHARS_PER_TEXT else text
+        numbered_lines.append(f"{seq}. {t}")
+
+    user_message = "\n\n".join(numbered_lines)
+
+    raw = await call_llm(
+        system_prompt=TRANSLATION_SYSTEM_PROMPT,
+        user_message=user_message,
+        temperature=0.2,
+        max_tokens=min(800 * len(batch) + 200, 16384),
+    )
+    return _parse_json_array(raw, expected=len(batch))
+
+
 async def translate_arabic_citations(citations: list[Citation]) -> list[Citation]:
     """Auto-translate Arabic-only citations via a single LLM call.
 
@@ -36,24 +64,9 @@ async def translate_arabic_citations(citations: list[Citation]) -> list[Citation
     # Cap to MAX_BATCH
     batch_indices = arabic_indices[:MAX_BATCH]
 
-    # Build numbered input for the LLM
-    numbered_lines: list[str] = []
-    for seq, idx in enumerate(batch_indices, start=1):
-        text = citations[idx].text_arabic or ""
-        if len(text) > MAX_CHARS_PER_TEXT:
-            text = text[:MAX_CHARS_PER_TEXT] + "..."
-        numbered_lines.append(f"{seq}. {text}")
-
-    user_message = "\n\n".join(numbered_lines)
-
     try:
-        raw = await call_llm(
-            system_prompt=TRANSLATION_SYSTEM_PROMPT,
-            user_message=user_message,
-            temperature=0.2,
-            max_tokens=min(800 * len(batch_indices) + 200, 16384),
-        )
-        translations = _parse_json_array(raw, expected=len(batch_indices))
+        arabic_texts = [citations[idx].text_arabic or "" for idx in batch_indices]
+        translations = await translate_texts(arabic_texts)
     except (LLMError, ValueError) as exc:
         logger.warning("Translation failed, returning citations untranslated: %s", exc)
         return citations
