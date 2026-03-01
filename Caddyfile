@@ -1,0 +1,7 @@
+ilmatlas.com {
+    reverse_proxy frontend:3000
+}
+
+api.ilmatlas.com {
+    reverse_proxy backend:8000
+}
