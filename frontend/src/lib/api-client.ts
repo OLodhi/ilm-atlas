@@ -17,6 +17,15 @@ import type {
   SSETitleEvent,
   SSEDoneEvent,
   SSEErrorEvent,
+  SurahSummary,
+  SurahDetailResponse,
+  CollectionSummary,
+  HadithBookSummary,
+  HadithBookDetailResponse,
+  TafsirSummary,
+  TafsirSurahDetailResponse,
+  TafsirForAyah,
+  LibraryStats,
 } from "./types";
 import { ApiError } from "./api-errors";
 
@@ -467,4 +476,63 @@ export async function streamChatMessage(
       }
     }
   }
+}
+
+// --- Reader (public, no auth) ---
+
+export async function fetchLibraryStats(): Promise<LibraryStats> {
+  return apiFetch<LibraryStats>("/read/stats");
+}
+
+export async function fetchSurahs(): Promise<SurahSummary[]> {
+  return apiFetch<SurahSummary[]>("/read/quran/surahs");
+}
+
+export async function fetchSurahDetail(
+  surahNumber: number
+): Promise<SurahDetailResponse> {
+  return apiFetch<SurahDetailResponse>(`/read/quran/surahs/${surahNumber}`);
+}
+
+export async function fetchAyahTafsir(
+  surahNumber: number,
+  ayahNumber: number
+): Promise<TafsirForAyah[]> {
+  return apiFetch<TafsirForAyah[]>(
+    `/read/quran/surahs/${surahNumber}/ayahs/${ayahNumber}/tafsir`
+  );
+}
+
+export async function fetchHadithCollections(): Promise<CollectionSummary[]> {
+  return apiFetch<CollectionSummary[]>("/read/hadith/collections");
+}
+
+export async function fetchHadithBooks(
+  collectionSlug: string
+): Promise<HadithBookSummary[]> {
+  return apiFetch<HadithBookSummary[]>(
+    `/read/hadith/collections/${collectionSlug}/books`
+  );
+}
+
+export async function fetchHadithBookDetail(
+  collectionSlug: string,
+  bookNumber: number
+): Promise<HadithBookDetailResponse> {
+  return apiFetch<HadithBookDetailResponse>(
+    `/read/hadith/collections/${collectionSlug}/books/${bookNumber}`
+  );
+}
+
+export async function fetchTafsirList(): Promise<TafsirSummary[]> {
+  return apiFetch<TafsirSummary[]>("/read/tafsir");
+}
+
+export async function fetchTafsirSurahDetail(
+  tafsirSlug: string,
+  surahNumber: number
+): Promise<TafsirSurahDetailResponse> {
+  return apiFetch<TafsirSurahDetailResponse>(
+    `/read/tafsir/${tafsirSlug}/surahs/${surahNumber}`
+  );
 }
