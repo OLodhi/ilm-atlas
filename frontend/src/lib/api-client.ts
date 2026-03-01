@@ -536,3 +536,14 @@ export async function fetchTafsirSurahDetail(
     `/read/tafsir/${tafsirSlug}/surahs/${surahNumber}`
   );
 }
+
+export async function translateTexts(
+  texts: string[]
+): Promise<string[]> {
+  const res = await apiFetch<{ translations: string[] }>("/read/translate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ texts }),
+  });
+  return res.translations;
+}

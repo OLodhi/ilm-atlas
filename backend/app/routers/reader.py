@@ -3,7 +3,10 @@
 All endpoints are public (no auth required) and rate-limited to 60 req/min.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -20,6 +23,10 @@ from app.models.reader_schemas import (
     TafsirSummary,
 )
 from app.services import reader as reader_service
+from app.services.translation import translate_texts
+from app.services.llm import LLMError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/read", tags=["reader"])
 
@@ -174,3 +181,28 @@ async def get_tafsir_surah_detail(
             detail=f"Tafsir '{slug}' surah {surah_number} not found.",
         )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Translation
+# ---------------------------------------------------------------------------
+
+
+class TranslateRequest(BaseModel):
+    texts: list[str] = Field(..., min_length=1, max_length=10)
+
+
+class TranslateResponse(BaseModel):
+    translations: list[str]
+
+
+@router.post("/translate", response_model=TranslateResponse)
+@limiter.limit("10/minute")
+async def translate(request: Request, body: TranslateRequest):
+    """Translate a batch of Arabic texts to English via LLM."""
+    try:
+        translations = await translate_texts(body.texts)
+    except (LLMError, ValueError) as exc:
+        logger.warning("Reader translation failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Translation service unavailable.")
+    return TranslateResponse(translations=translations)

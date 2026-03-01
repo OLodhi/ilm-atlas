@@ -55,7 +55,9 @@ TAFSIRS = [
     {"name": "Tafsir Al-Qurtubi", "author": "Imam Al-Qurtubi", "language": "arabic", "source": "quran_com", "resource_id": 90},
     # alquran.cloud API
     {"name": "Tafsir Al-Jalalayn", "author": "Al-Mahalli & As-Suyuti", "language": "arabic", "source": "alquran_cloud", "edition": "ar.jalalayn"},
-    {"name": "Tafsir Al-Jalalayn (English)", "author": "Al-Mahalli & As-Suyuti", "language": "english", "source": "alquran_cloud", "edition": "en.jalalayn"},
+    # NOTE: "en.jalalayn" does not exist on alquran.cloud — the API silently
+    # falls back to plain Quran text.  Only ar.jalalayn (Arabic) and
+    # id.jalalayn (Indonesian) are available.
 ]
 
 # fmt: off
