@@ -46,12 +46,12 @@ export function CitationLink({ citation, onClick }: CitationLinkProps) {
   );
 }
 
-const CITATION_RE = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
+const CITATION_RE = /\[(?:Source\s+)?(\d+(?:\s*,\s*\d+)*)\]/g;
 
 /**
- * Scan a string for `[N]` and `[N, N, ...]` patterns and return an array of
- * ReactNodes where valid citation references are replaced with `CitationLink`
- * components showing the source name.
+ * Scan a string for `[N]`, `[Source N]`, and `[N, N, ...]` patterns and
+ * return an array of ReactNodes where valid citation references are replaced
+ * with `CitationLink` components showing the source name.
  */
 export function renderTextWithCitations(
   text: string,
