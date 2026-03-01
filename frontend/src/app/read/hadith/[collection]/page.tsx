@@ -35,7 +35,7 @@ export default function HadithCollectionPage() {
     <ReaderLayout
       sidebarContent={books ? <BookListSidebar collectionSlug={slug} books={books} /> : null}
     >
-      <div className="mx-auto max-w-4xl p-6">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
         <Breadcrumbs
           items={[
             { label: "Library", href: "/read" },
