@@ -21,7 +21,7 @@ export function TypographyControls({
   onDecreaseEnglish,
 }: TypographyControlsProps) {
   return (
-    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+    <div className="flex shrink-0 items-center gap-4 text-sm text-muted-foreground">
       <div className="flex items-center gap-1">
         <span className="font-amiri text-base" dir="rtl">ع</span>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onDecreaseArabic}>

@@ -54,8 +54,8 @@ export default function HadithBookPage() {
     <ReaderLayout
       sidebarContent={books ? <BookListSidebar collectionSlug={slug} books={books} /> : null}
     >
-      <div className="mx-auto max-w-4xl p-6">
-        <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Breadcrumbs
             items={[
               { label: "Library", href: "/read" },
