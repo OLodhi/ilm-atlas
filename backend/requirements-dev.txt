@@ -1,0 +1,14 @@
+# Local development extras (GPU/CPU embedding, OCR)
+-r requirements.txt
+
+# Embedding (bge-m3 local)
+sentence-transformers>=4.0
+
+# OCR (surya brings pillow + pypdfium2)
+surya-ocr>=0.17.1
+
+# PDF extraction
+pdfplumber>=0.11.4
+
+# Testing
+pytest>=8.0
