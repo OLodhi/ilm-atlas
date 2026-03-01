@@ -71,6 +71,9 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     steps:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
@@ -83,3 +86,5 @@ jobs:
             docker compose pull backend frontend
             docker compose up -d --no-build
             docker image prune -f
+            sleep 5
+            curl -sf http://localhost:8000/health || (echo "Health check failed!" && exit 1)

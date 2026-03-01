@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+
 # Daily PostgreSQL backup — run via cron
 # Crontab: 0 3 * * * /opt/ilmatlas/scripts/backup-db.sh
 
@@ -11,6 +13,12 @@ mkdir -p "$BACKUP_DIR"
 docker compose -f /opt/ilmatlas/docker-compose.yml exec -T postgres \
     pg_dump -U "${POSTGRES_USER:-ilmatlas}" "${POSTGRES_DB:-ilmatlas}" \
     | gzip > "$BACKUP_DIR/ilmatlas_$TIMESTAMP.sql.gz"
+
+# Verify backup is not empty
+if [ ! -s "$BACKUP_DIR/ilmatlas_$TIMESTAMP.sql.gz" ]; then
+    echo "ERROR: Backup file is empty!" >&2
+    exit 1
+fi
 
 # Prune old backups
 find "$BACKUP_DIR" -name "*.sql.gz" -mtime +$KEEP_DAYS -delete

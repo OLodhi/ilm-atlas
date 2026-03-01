@@ -1,8 +1,6 @@
 import logging
 from pathlib import Path
 
-import numpy as np
-
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -136,6 +134,8 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
 def _embed_onnx(texts: list[str], session, tokenizer) -> list[list[float]]:
     """Run embedding inference directly through the ONNX session."""
+    import numpy as np
+
     encoded = tokenizer(
         texts,
         padding=True,
