@@ -14,7 +14,7 @@ export function ReaderLayout({ sidebarContent, children }: ReaderLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-[calc(100vh-3.5rem)]">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
@@ -25,7 +25,7 @@ export function ReaderLayout({ sidebarContent, children }: ReaderLayoutProps) {
       <div
         className={`${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } fixed inset-y-0 left-0 z-50 w-[280px] border-r bg-background transition-transform lg:static lg:translate-x-0`}
+        } fixed inset-y-[3.5rem] left-0 z-50 w-[280px] border-r bg-background transition-transform lg:static lg:translate-x-0`}
       >
         <ReaderSidebar>{sidebarContent}</ReaderSidebar>
       </div>
