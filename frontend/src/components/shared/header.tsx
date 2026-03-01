@@ -42,6 +42,17 @@ export function Header() {
           >
             Chat
           </Link>
+          <Link
+            href="/read"
+            className={cn(
+              "transition-colors hover:text-foreground",
+              pathname.startsWith("/read")
+                ? "text-foreground"
+                : "text-muted-foreground"
+            )}
+          >
+            Read
+          </Link>
           {isAuthenticated && user?.role === "admin" && (
             <Link
               href="/admin"
