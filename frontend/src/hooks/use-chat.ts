@@ -13,6 +13,7 @@ interface PendingStream {
   optimisticMessage: ChatMessage;
 }
 const pendingStreams = new Map<string, PendingStream>();
+const abortControllers = new Map<string, AbortController>();
 
 export function useChat(sessionId: string) {
   const [session, setSession] = useState<ChatSessionDetail | null>(null);
@@ -108,6 +109,9 @@ export function useChat(sessionId: string) {
           ? { ...prev, messages: [...prev.messages, tempUserMsg] }
           : prev
       );
+
+      const controller = new AbortController();
+      abortControllers.set(sessionId, controller);
 
       const streamPromise = (async () => {
         try {
@@ -217,9 +221,38 @@ export function useChat(sessionId: string) {
               onError: (data) => {
                 setError(data.detail);
               },
-            }
+            },
+            controller.signal
           );
         } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") {
+            // User cancelled — flush remaining tokens and finalize with partial content
+            if (rafRef.current !== null) {
+              cancelAnimationFrame(rafRef.current);
+              rafRef.current = null;
+            }
+            const buffered = tokenBufferRef.current;
+            tokenBufferRef.current = "";
+
+            setSession((prev) => {
+              if (!prev) return prev;
+              const msgs = prev.messages;
+              const last = msgs[msgs.length - 1];
+              if (!last || last.id !== STREAMING_MSG_ID) return prev;
+              return {
+                ...prev,
+                messages: [
+                  ...msgs.slice(0, -1),
+                  {
+                    ...last,
+                    id: `cancelled-${Date.now()}`,
+                    content: last.content + buffered,
+                  },
+                ],
+              };
+            });
+            return;
+          }
           setError(parseApiError(err));
           // Remove optimistic user message on failure
           setSession((prev) =>
@@ -235,6 +268,7 @@ export function useChat(sessionId: string) {
           );
           throw err;
         } finally {
+          abortControllers.delete(sessionId);
           pendingStreams.delete(sessionId);
           setSending(false);
         }
@@ -254,6 +288,13 @@ export function useChat(sessionId: string) {
     [sessionId, sending, madhab, category, flushTokenBuffer]
   );
 
+  const abortStream = useCallback(() => {
+    const controller = abortControllers.get(sessionId);
+    if (controller) {
+      controller.abort();
+    }
+  }, [sessionId]);
+
   return {
     session,
     sending,
@@ -264,5 +305,6 @@ export function useChat(sessionId: string) {
     setCategory,
     loadSession,
     sendMessage,
+    abortStream,
   };
 }

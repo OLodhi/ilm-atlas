@@ -66,7 +66,7 @@ export function ChatThread({ messages, sending }: ChatThreadProps) {
 
   return (
     <div ref={scrollRef} data-chat-scroll className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-4 p-4 pb-6">
+      <div className="mx-auto max-w-3xl space-y-4 p-4 pb-2">
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
         ))}

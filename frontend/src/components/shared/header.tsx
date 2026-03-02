@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,35 @@ export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const [visible, setVisible] = useState(true);
+  const lastScrollY = useRef(0);
+  const isMobile = useRef(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    isMobile.current = mq.matches;
+    const onChange = (e: MediaQueryListEvent) => {
+      isMobile.current = e.matches;
+      if (!e.matches) setVisible(true);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  const handleScroll = useCallback((e: Event) => {
+    if (!isMobile.current) return;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    const y = target.scrollTop;
+    if (Math.abs(y - lastScrollY.current) < 10) return;
+    setVisible(y <= 0 || y < lastScrollY.current);
+    lastScrollY.current = y;
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("scroll", handleScroll, { capture: true, passive: true });
+    return () => window.removeEventListener("scroll", handleScroll, { capture: true });
+  }, [handleScroll]);
 
   async function handleLogout() {
     await logout();
@@ -25,6 +55,10 @@ export function Header() {
   }
 
   return (
+    <div className={cn(
+      "shrink-0 overflow-hidden transition-[max-height] duration-300 lg:!max-h-14",
+      visible ? "max-h-14" : "max-h-0"
+    )}>
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-7xl items-center px-4">
         <Link href="/" className="mr-8 font-semibold tracking-tight">
@@ -104,5 +138,6 @@ export function Header() {
         </div>
       </div>
     </header>
+    </div>
   );
 }

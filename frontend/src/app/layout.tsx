@@ -31,8 +31,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} ${amiri.variable} font-sans antialiased`}>
         <AuthProvider>
-          <Header />
-          {children}
+          <div className="flex h-screen flex-col">
+            <Header />
+            <div className="min-h-0 flex-1">{children}</div>
+          </div>
         </AuthProvider>
       </body>
     </html>
