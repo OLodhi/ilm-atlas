@@ -11,9 +11,10 @@ import { useUsage } from "@/hooks/use-usage";
 
 interface ChatLayoutProps {
   sessionId: string;
+  emailVerified?: boolean;
 }
 
-export function ChatLayout({ sessionId }: ChatLayoutProps) {
+export function ChatLayout({ sessionId, emailVerified }: ChatLayoutProps) {
   const {
     session,
     sending,
@@ -107,6 +108,7 @@ export function ChatLayout({ sessionId }: ChatLayoutProps) {
           onMadhabChange={setMadhab}
           category={category}
           onCategoryChange={setCategory}
+          disabled={emailVerified === false}
         />
         {usage && (
           <div className="shrink-0 border-t px-4 py-1.5 text-center text-xs text-muted-foreground">
