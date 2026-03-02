@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
 import { useUsage } from "@/hooks/use-usage";
+import { useAuth } from "@/contexts/auth-context";
+import { EmailVerificationModal } from "@/components/shared/email-verification-modal";
 
 interface ChatLayoutProps {
   sessionId: string;
@@ -27,15 +29,21 @@ export function ChatLayout({ sessionId, emailVerified }: ChatLayoutProps) {
     sendMessage,
   } = useChat(sessionId);
 
+  const { user } = useAuth();
   const { usage, refresh: refreshUsage } = useUsage();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   const handleSend = useCallback(
     async (text: string) => {
+      if (emailVerified === false) {
+        setShowVerifyModal(true);
+        return;
+      }
       await sendMessage(text);
       refreshUsage();
     },
-    [sendMessage, refreshUsage]
+    [emailVerified, sendMessage, refreshUsage]
   );
 
   useEffect(() => {
@@ -62,6 +70,7 @@ export function ChatLayout({ sessionId, emailVerified }: ChatLayoutProps) {
           activeSessionId={sessionId}
           activeSessionTitle={session?.title}
           onSessionCreated={() => setSidebarOpen(false)}
+          onNewChat={emailVerified === false ? () => setShowVerifyModal(true) : undefined}
         />
       </div>
 
@@ -108,7 +117,6 @@ export function ChatLayout({ sessionId, emailVerified }: ChatLayoutProps) {
           onMadhabChange={setMadhab}
           category={category}
           onCategoryChange={setCategory}
-          disabled={emailVerified === false}
         />
         {usage && (
           <div className="shrink-0 border-t px-4 py-1.5 text-center text-xs text-muted-foreground">
@@ -116,6 +124,14 @@ export function ChatLayout({ sessionId, emailVerified }: ChatLayoutProps) {
           </div>
         )}
       </div>
+      {user && (
+        <EmailVerificationModal
+          email={user.email}
+          open={showVerifyModal}
+          onClose={() => setShowVerifyModal(false)}
+          onVerified={() => setShowVerifyModal(false)}
+        />
+      )}
     </div>
   );
 }

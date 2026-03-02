@@ -15,11 +15,15 @@ import { useAuth } from "@/contexts/auth-context";
 
 interface EmailVerificationModalProps {
   email: string;
+  open: boolean;
+  onClose: () => void;
   onVerified: () => void;
 }
 
 export function EmailVerificationModal({
   email,
+  open,
+  onClose,
   onVerified,
 }: EmailVerificationModalProps) {
   const { refreshUser } = useAuth();
@@ -60,13 +64,8 @@ export function EmailVerificationModal({
   }
 
   return (
-    <Dialog open modal>
-      <DialogContent
-        className="sm:max-w-md [&>button]:hidden"
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
-      >
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader className="items-center text-center">
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
             <Mail className="h-6 w-6 text-primary" />
