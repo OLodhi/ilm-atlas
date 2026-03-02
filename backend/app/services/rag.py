@@ -238,7 +238,12 @@ def _build_sources_english_only(
     if intent.structural_context:
         return _build_sources_and_context(hits, intent, top_k)
 
-    if intent.query_type in ("counting", "listing"):
+    if intent.query_type == "counting":
+        COUNTING_SAMPLE = 10
+        sample = hits[:COUNTING_SAMPLE]
+        source_blocks = [_format_source_english_only(hit, i + 1) for i, hit in enumerate(sample)]
+        sources_text = "\n\n---\n\n".join(source_blocks)
+    elif intent.query_type == "listing":
         source_blocks = [_format_source_english_only(hit, i + 1) for i, hit in enumerate(hits)]
         sources_text = "\n\n---\n\n".join(source_blocks)
     else:
@@ -518,7 +523,13 @@ def _build_sources_and_context(
         )
         return sources_text, query_context
 
-    if intent.query_type in ("counting", "listing"):
+    if intent.query_type == "counting":
+        # Cap to a sample so the model doesn't conflate source count with the answer
+        COUNTING_SAMPLE = 10
+        sample = hits[:COUNTING_SAMPLE]
+        source_blocks = [_format_source(hit, i + 1) for i, hit in enumerate(sample)]
+        sources_text = "\n\n---\n\n".join(source_blocks)
+    elif intent.query_type == "listing":
         source_blocks = [_format_source(hit, i + 1) for i, hit in enumerate(hits)]
         sources_text = "\n\n---\n\n".join(source_blocks)
     else:
@@ -907,9 +918,11 @@ def _build_query_context(query_type: str, total_sources: int, metadata_desc: str
         )
     if query_type == "counting":
         return (
-            f"This is a counting query. Exactly {total_sources} relevant sources "
-            "have been found and provided below. Report this exact number — "
-            "do NOT recount manually. Present the answer and list the sources."
+            "This is a counting query. Answer with the established scholarly "
+            "consensus. A sample of matching verses is provided as supporting "
+            "evidence — do NOT count them to produce the answer, as they are "
+            "only a subset. Only list individual references if the user "
+            "explicitly asks for all occurrences."
         )
     if query_type == "listing":
         return (
