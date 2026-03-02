@@ -2,7 +2,6 @@
 
 import { ChatLayout } from "@/components/chat/chat-layout";
 import { AuthGuard } from "@/components/shared/auth-guard";
-import { EmailVerificationModal } from "@/components/shared/email-verification-modal";
 import { useAuth } from "@/contexts/auth-context";
 
 export default function ChatPage({
@@ -19,12 +18,6 @@ export default function ChatPage({
         sessionId={params.sessionId}
         emailVerified={emailVerified}
       />
-      {!emailVerified && user && (
-        <EmailVerificationModal
-          email={user.email}
-          onVerified={() => {}}
-        />
-      )}
     </AuthGuard>
   );
 }

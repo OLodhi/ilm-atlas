@@ -17,12 +17,14 @@ interface ChatSidebarProps {
   activeSessionId?: string;
   activeSessionTitle?: string | null;
   onSessionCreated?: () => void;
+  onNewChat?: () => void;
 }
 
 export function ChatSidebar({
   activeSessionId,
   activeSessionTitle,
   onSessionCreated,
+  onNewChat,
 }: ChatSidebarProps) {
   const router = useRouter();
   const { sessions, refresh, create, remove, updateTitle } = useChatSessions();
@@ -39,6 +41,10 @@ export function ChatSidebar({
   }, [activeSessionId, activeSessionTitle, updateTitle]);
 
   const handleNew = async () => {
+    if (onNewChat) {
+      onNewChat();
+      return;
+    }
     const session = await create();
     router.push(`/chat/${session.id}`);
     onSessionCreated?.();

@@ -20,7 +20,6 @@ interface ChatInputProps {
   onMadhabChange: (value: string) => void;
   category: string;
   onCategoryChange: (value: string) => void;
-  disabled?: boolean;
 }
 
 export function ChatInput({
@@ -30,15 +29,14 @@ export function ChatInput({
   onMadhabChange,
   category,
   onCategoryChange,
-  disabled,
 }: ChatInputProps) {
   const [text, setText] = useState("");
 
   const handleSend = useCallback(() => {
-    if (!text.trim() || sending || disabled) return;
+    if (!text.trim() || sending) return;
     onSend(text.trim());
     setText("");
-  }, [text, sending, disabled, onSend]);
+  }, [text, sending, onSend]);
 
   return (
     <div className="border-t bg-background p-4">
@@ -56,11 +54,10 @@ export function ChatInput({
             }}
             className="min-h-[48px] max-h-[120px] resize-none"
             rows={1}
-            disabled={disabled}
           />
           <Button
             onClick={handleSend}
-            disabled={sending || !text.trim() || disabled}
+            disabled={sending || !text.trim()}
             size="icon"
             className="shrink-0 self-end"
           >
