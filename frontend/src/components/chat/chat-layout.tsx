@@ -27,6 +27,7 @@ export function ChatLayout({ sessionId, emailVerified }: ChatLayoutProps) {
     setCategory,
     loadSession,
     sendMessage,
+    abortStream,
   } = useChat(sessionId);
 
   const { user } = useAuth();
@@ -50,8 +51,20 @@ export function ChatLayout({ sessionId, emailVerified }: ChatLayoutProps) {
     loadSession();
   }, [loadSession]);
 
+  // Escape key cancels streaming
+  useEffect(() => {
+    if (!sending) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        abortStream();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sending, abortStream]);
+
   return (
-    <div className="flex h-[calc(100vh-3.5rem)]">
+    <div className="flex h-full">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -102,7 +115,7 @@ export function ChatLayout({ sessionId, emailVerified }: ChatLayoutProps) {
         )}
 
         {/* Thread */}
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 pb-1">
           <ChatThread
             messages={session?.messages ?? []}
             sending={sending}
@@ -113,16 +126,13 @@ export function ChatLayout({ sessionId, emailVerified }: ChatLayoutProps) {
         <ChatInput
           onSend={handleSend}
           sending={sending}
+          onStop={abortStream}
           madhab={madhab}
           onMadhabChange={setMadhab}
           category={category}
           onCategoryChange={setCategory}
+          usage={usage}
         />
-        {usage && (
-          <div className="shrink-0 border-t px-4 py-1.5 text-center text-xs text-muted-foreground">
-            {usage.used}/{usage.limit} queries today
-          </div>
-        )}
       </div>
       {user && (
         <EmailVerificationModal
